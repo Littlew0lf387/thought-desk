@@ -1,0 +1,16 @@
+{
+  "name": "Thought Desk — Cozy Study & Journal",
+  "short_name": "Thought Desk",
+  "description": "Personal cozy study, journal, game rotation, and Google Drive-synced notes.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#1d241f",
+  "theme_color": "#28302a",
+  "icons": [
+    {
+      "src": "assets/study_wall.jpg",
+      "sizes": "1920x1080",
+      "type": "image/jpeg"
+    }
+  ]
+}

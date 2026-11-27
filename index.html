@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#28302a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Thought Desk — Cozy Study &amp; Journal</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 2.5D Concept B Study Wall Stage (scaled cleanly to fill viewport with subtle parallax) -->
+    <main id="stage-viewport" class="stage-viewport" aria-label="Cozy Study Desk">
+      <div id="stage-world" class="stage-world">
+        <img id="room-bg" class="room-bg" src="assets/study_wall.jpg" alt="Cozy study wall" draggable="false" />
+
+        <!-- Soft daylight / evening mood tint -->
+        <div id="room-mood-overlay" class="room-mood-overlay" aria-hidden="true"></div>
+
+        <!-- Live Atmospheric FX: Fairy light glow, Lamp light beam, Mug steam, Dust motes, Yarn links -->
+        <canvas id="fx-canvas" width="1600" height="900"></canvas>
+
+        <!-- Direct Room Object Hotspots (aligned to Concept B furniture) -->
+        <button type="button" id="hotspot-lamp" class="room-hotspot hotspot-lamp" title="Click Desk Lamp to toggle Evening / Soft Daylight">
+          <span class="hotspot-tag">Theme</span>
+        </button>
+
+        <button type="button" id="hotspot-journal" class="room-hotspot hotspot-journal" title="Open 2-Page Daily Journal (J)">
+          <span class="hotspot-tag">Open Journal</span>
+        </button>
+
+        <button type="button" id="hotspot-mug" class="room-hotspot hotspot-mug" title="Click Mug to start/pause 25m Focus Timer (Shift+Click to reset)">
+          <span id="mug-timer-badge" class="mug-timer-badge">25:00</span>
+        </button>
+
+        <button type="button" id="hotspot-mail" class="room-hotspot hotspot-mail" title="Open Mail & Gmail Follow-ups">
+          <span id="mail-count-pill" class="mail-badge">Mail 0</span>
+        </button>
+
+        <button type="button" id="btn-bin-toggle" class="room-hotspot hotspot-basket" title="Open Thought Bin (B) — or drag any note here to shelve it">
+          <span class="basket-badge">Bin <span id="bin-count-pill">0</span></span>
+        </button>
+
+        <!-- Dynamic Shelf Controls (Main Shelf + Sort + Add Binder) -->
+        <div class="shelf-header-bar">
+          <select id="shelf-section-select" class="shelf-mini-select" title="Switch Shelf Section"></select>
+          <select id="binder-sort-select" class="shelf-mini-select" title="Sort Binders">
+            <option value="used">Sort: Most Used</option>
+            <option value="recent">Sort: Recent</option>
+            <option value="az">Sort: A–Z</option>
+          </select>
+          <button type="button" id="btn-new-binder" class="shelf-mini-btn" title="Create a new Binder">+ Binder</button>
+        </div>
+
+        <!-- Top Shelf: Dynamic Scrollable Binders (Main Organizer) -->
+        <div id="shelf-spaces" class="shelf-zone shelf-top" aria-label="Dynamic Binders Shelf"></div>
+
+        <!-- Middle Shelf: Game Rotation (Now Playing, max 3) -->
+        <div id="shelf-games" class="shelf-zone shelf-mid" aria-label="Active Game Rotation"></div>
+
+        <!-- Bottom Shelf: Custom / Overflow Binders & Space Notebooks -->
+        <div id="shelf-cards" class="shelf-zone shelf-bot" aria-label="Spaces & Extra Binders"></div>
+
+        <!-- Right Framed Corkboard: Draggable Pinned Notes -->
+        <div id="corkboard-zone" class="corkboard-zone" aria-label="Cork Pinboard"></div>
+      </div>
+    </main>
+
+    <!-- Ultra-Minimal Top-Left Corner Pill + Quick Auto-Sort Jot -->
+    <div class="corner-top-left">
+      <div class="mini-pill brand-pill">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span id="active-space-label" class="brand-name">Main Study</span>
+      </div>
+      <form id="quick-jot-form" class="quick-jot-form" title="Jot any thought — auto-categorizes & routes automatically">
+        <input id="quick-jot-input" type="text" placeholder="Jot anything (auto-sorts)…" autocomplete="off" />
+      </form>
+      <button type="button" id="btn-new" class="mini-pill mini-btn-pill accent" title="New blank note (N)">+ Note</button>
+      <button type="button" id="btn-games-toggle" class="mini-pill mini-btn-pill" title="Manage Game Rotation & Backlog (G)">Rotation</button>
+    </div>
+
+    <!-- Ultra-Minimal Top-Right Corner Icons -->
+    <div class="corner-top-right">
+      <div class="search-expand-wrap">
+        <input id="search-input" type="search" class="mini-search" placeholder="Search notes…" autocomplete="off" />
+      </div>
+
+      <div class="popover-wrap">
+        <button type="button" id="btn-filter-toggle" class="mini-pill mini-btn-pill" title="Filter by category">
+          Filter <span id="filter-dot" class="inline-dot hidden"></span>
+        </button>
+        <div id="filter-popover" class="popover hidden">
+          <div class="popover-title">Filter by Category</div>
+          <div id="category-bar" class="category-pills"></div>
+        </div>
+      </div>
+
+      <button type="button" id="btn-calendar-toggle" class="mini-pill mini-btn-pill" title="Study Calendar & Auto-Reminders">Reminders</button>
+      <button type="button" id="btn-outline-toggle" class="mini-pill mini-btn-pill" title="Archive & Quick Search (O)">Archive</button>
+      <button type="button" id="btn-sync-toggle" class="mini-pill mini-btn-pill accent" title="Google Drive Sync & Backups">Sync &amp; Backup</button>
+      <button type="button" id="btn-plugins-toggle" class="mini-pill mini-btn-pill" title="Plugins & Automations (P)">Automations</button>
+
+      <div class="popover-wrap">
+        <button type="button" id="btn-more-menu" class="mini-pill mini-btn-pill" aria-label="More options" title="More options">⋯</button>
+        <div id="data-menu" class="popover menu-list hidden">
+          <button type="button" id="btn-theme-toggle" class="menu-item">Switch to Soft Daylight</button>
+          <button type="button" id="btn-menu-sync" class="menu-item">Sync &amp; Backups (Google Drive)</button>
+          <button type="button" id="btn-tidy" class="menu-item">Neatly Arrange Corkboard</button>
+          <button type="button" id="btn-export-md" class="menu-item">Export Markdown (.md)</button>
+          <button type="button" id="btn-export" class="menu-item">Export Backup (.json)</button>
+          <label class="menu-item file-label">
+            Import Backup (.json)
+            <input id="input-import" type="file" accept="application/json" hidden />
+          </label>
+          <hr />
+          <button type="button" id="btn-reset-demo" class="menu-item danger">Restore Sample Study</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quiet Bottom-Left Status & Recall -->
+    <div class="bottom-left">
+      <div id="stats-badge" class="pill-badge">0 notes</div>
+      <div class="popover-wrap">
+        <button type="button" id="btn-help" class="pill-badge pill-btn" title="Keyboard &amp; Steam Deck Shortcuts (?)">?</button>
+        <div id="help-popover" class="popover help-popover hidden">
+          <div class="popover-title">Study &amp; Shortcut Guide</div>
+          <ul class="help-list">
+            <li><strong>Journal / Note</strong> — <code>J</code> Daily Journal, <code>N</code> New Note, <code>/</code> Search</li>
+            <li><strong>Drawers</strong> — <code>G</code> Games, <code>B</code> Thought Bin, <code>O</code> Archive, <code>M</code> Mail, <code>R</code> Reminders, <code>P</code> Plugins</li>
+            <li><strong>Desk Props</strong> — <code>T</code> Lamp Theme, <code>F</code> 25m Focus Mug, <code>?</code> Help, <code>Esc</code> Close</li>
+            <li><strong>Steam Deck / Gamepad</strong> — D-Pad cycles desk props, <code>A</code> activates, <code>B</code> closes, <code>X</code> Journal, <code>Y</code> Help</li>
+            <li><strong>Binders</strong> — Click any binder spine to customize its color or add new ones via <code>+ Binder</code></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gentle Recall soft reminder -->
+    <div id="recall-card" class="recall-card hidden" aria-live="polite">
+      <div class="recall-head">
+        <span class="recall-label">Gentle Recall ✦</span>
+        <button type="button" id="btn-recall-dismiss" class="btn-ghost-xs" title="Dismiss">✕</button>
+      </div>
+      <p id="recall-message" class="recall-msg"></p>
+      <div id="recall-list" class="recall-list"></div>
+    </div>
+
+    <!-- 2-Page Open Journal Spread Modal -->
+    <div id="journal-modal" class="journal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Daily Journal Spread">
+      <div class="journal-book">
+        <div class="journal-page journal-left">
+          <div class="journal-page-head">
+            <div>
+              <span class="journal-kicker">Personal Journal</span>
+              <h2 id="journal-today-date">Today</h2>
+            </div>
+            <div class="mood-picker" aria-label="Today's mood">
+              <button type="button" class="mood-btn" data-mood="☕" title="Cozy">☕</button>
+              <button type="button" class="mood-btn" data-mood="🌧️" title="Reflective">🌧️</button>
+              <button type="button" class="mood-btn" data-mood="✨" title="Inspired">✨</button>
+              <button type="button" class="mood-btn" data-mood="🌿" title="Calm">🌿</button>
+              <button type="button" class="mood-btn" data-mood="😮‍💨" title="Tired">😮‍💨</button>
+            </div>
+          </div>
+          <p class="journal-prompt-line">Prompt: <em>What is one small thing on your mind right now?</em></p>
+          <div class="journal-past-label">Recent Entries</div>
+          <ul id="journal-entries-list" class="journal-entries-list"></ul>
+        </div>
+
+        <div class="journal-spine" aria-hidden="true"></div>
+
+        <form id="journal-form" class="journal-page journal-right">
+          <div class="journal-page-head">
+            <input id="journal-title" type="text" class="journal-spread-title" placeholder="Entry title…" required />
+            <button type="button" id="btn-close-journal" class="btn btn-small" title="Close Journal (Esc)">✕</button>
+          </div>
+          <textarea id="journal-body" class="journal-spread-body" placeholder="Write freely… (supports - [ ] checklists and #tags)"></textarea>
+          <div class="journal-spread-footer">
+            <span id="journal-word-count" class="journal-meta-muted">0 words</span>
+            <div style="display:flex;gap:6px">
+              <button type="button" id="btn-journal-gdoc" class="btn btn-small" title="Export journal entries to a Google Doc">To Google Doc</button>
+              <button type="button" id="btn-journal-new" class="btn btn-small">+ Blank Page</button>
+              <button type="submit" class="btn btn-primary btn-small">Save Page</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Left: All Notes & Archive -->
+    <aside id="outline-panel" class="side-panel left-panel hidden" aria-label="Notes list">
+      <div class="panel-header">
+        <h2>All Notes &amp; Archive</h2>
+        <button type="button" id="btn-close-outline" class="btn btn-small" title="Close">✕</button>
+      </div>
+      <div id="outline-content" class="outline-content"></div>
+    </aside>
+
+    <!-- Right: Game Rotation & Catalogue Drawer (Anti-Overwhelm) -->
+    <aside id="games-panel" class="side-panel right-panel hidden" aria-label="Game Rotation and Catalogue">
+      <div class="panel-header">
+        <div>
+          <h2>Game Rotation</h2>
+          <p class="panel-sub">Keep your active rotation manageable so gaming stays fun, not stressful</p>
+        </div>
+        <button type="button" id="btn-close-games" class="btn btn-small" title="Close">✕</button>
+      </div>
+
+      <div id="rotation-meter" class="rotation-meter"></div>
+
+      <!-- "What am I in the mood for?" anti-paralysis picker -->
+      <div class="mood-game-box">
+        <span class="mood-game-label">What am I in the mood for?</span>
+        <div class="mood-game-row">
+          <select id="game-mood-pick" aria-label="Filter by mood">
+            <option value="any">Surprise me</option>
+            <option value="Cozy">Cozy / Chill</option>
+            <option value="Story">Story / Narrative</option>
+            <option value="Action">Action / Fast</option>
+            <option value="Puzzle">Puzzle / Short</option>
+          </select>
+          <button type="button" id="btn-pick-game" class="btn btn-small">Pick 1 for Me</button>
+        </div>
+        <div id="game-pick-result" class="game-pick-result hidden"></div>
+      </div>
+
+      <form id="game-add-form" class="game-add-form">
+        <input id="game-title-input" type="text" placeholder="Game title…" autocomplete="off" required />
+        <div class="rule-row">
+          <select id="game-platform-input" aria-label="Platform">
+            <option value="PC">PC</option>
+            <option value="Steam Deck">Steam Deck</option>
+            <option value="Switch">Switch</option>
+            <option value="PS5">PS5</option>
+            <option value="Xbox">Xbox</option>
+            <option value="Retro">Retro</option>
+          </select>
+          <select id="game-vibe-input" aria-label="Vibe">
+            <option value="Cozy">Cozy / Chill</option>
+            <option value="Story">Story</option>
+            <option value="Action">Action</option>
+            <option value="Puzzle">Puzzle</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-small">+ Add to Catalogue</button>
+      </form>
+
+      <div class="game-tabs" role="tablist">
+        <button type="button" class="seg-btn active" data-gtab="playing">Now Playing</button>
+        <button type="button" class="seg-btn" data-gtab="backlog">Resting / Backlog</button>
+        <button type="button" class="seg-btn" data-gtab="done">Finished</button>
+      </div>
+
+      <ul id="games-list" class="bin-list"></ul>
+    </aside>
+
+    <!-- Right: Thought Bin Drawer -->
+    <aside id="bin-panel" class="side-panel right-panel hidden" aria-label="Thought Bin">
+      <div class="panel-header">
+        <div>
+          <h2>Thought Bin</h2>
+          <p class="panel-sub">Toss quick thoughts in the basket — sort or attach later</p>
+        </div>
+        <button type="button" id="btn-close-bin" class="btn btn-small" title="Close Bin">✕</button>
+      </div>
+
+      <form id="bin-quick-form" class="bin-quick-form">
+        <input id="bin-quick-input" type="text" placeholder="Dump a quick thought here…" autocomplete="off" />
+        <button type="submit" class="btn btn-primary btn-small">Toss In</button>
+      </form>
+
+      <div class="bin-toolbar">
+        <span id="bin-match-summary" class="bin-summary"></span>
+        <button type="button" id="btn-auto-sort-bin" class="btn btn-primary btn-small">Auto-Sort All</button>
+      </div>
+
+      <ul id="bin-list" class="bin-list"></ul>
+    </aside>
+
+    <!-- Centered Floating Card: Shelf Binder Collection -->
+    <aside id="shelf-drawer" class="side-panel center-card hidden" aria-label="Shelf Collection">
+      <div class="panel-header">
+        <div>
+          <h2 id="shelf-drawer-title">📚 Shelf Collection</h2>
+          <p id="shelf-drawer-sub" class="panel-sub">Long-term organized storage — pin any item to the Corkboard when active</p>
+        </div>
+        <button type="button" id="btn-close-shelf" class="btn btn-small" title="Close">✕</button>
+      </div>
+      <ul id="shelf-drawer-list" class="bin-list"></ul>
+    </aside>
+
+    <!-- Centered Floating Card: Note Editor -->
+    <aside id="inspector" class="side-panel center-card inspector hidden" aria-label="Note editor">
+      <div class="inspector-header">
+        <span id="inspector-badge" class="cat-badge">Idea</span>
+        <div class="inspector-actions">
+          <button type="button" id="btn-pin-note" class="btn btn-small" title="Pin / star">Pin</button>
+          <button type="button" id="btn-archive-note" class="btn btn-small" title="Archive (keeps board uncluttered)">Archive</button>
+          <button type="button" id="btn-shelve-note" class="btn btn-small" title="Move to Thought Bin">→ Bin</button>
+          <button type="button" id="btn-close-inspector" class="btn btn-small" title="Close (Esc)">✕</button>
+        </div>
+      </div>
+
+      <div id="inspector-date" class="inspector-date"></div>
+
+      <form id="note-form" class="note-form">
+        <label>
+          Title
+          <input id="field-title" class="journal-title-input" type="text" maxlength="80" placeholder="Note title…" required />
+        </label>
+
+        <label>
+          Category
+          <select id="field-category">
+            <option value="Idea">Idea (Corkboard)</option>
+            <option value="To-Do">To-Do (Corkboard)</option>
+            <option value="Personal">Personal (Corkboard)</option>
+            <option value="Learning">Learning (Bottom Shelf)</option>
+            <option value="Project">Project (Bottom Shelf)</option>
+            <option value="Journal">Journal</option>
+          </select>
+        </label>
+
+        <label>
+          <span class="label-row">
+            <span>Notes (supports <code>- [ ]</code> checklists)</span>
+            <button type="button" id="btn-add-check" class="btn-ghost-xs">+ Checklist item</button>
+          </span>
+          <textarea id="field-body" rows="6" placeholder="Write freely, or add - [ ] checklist items…"></textarea>
+        </label>
+
+        <label>
+          Tags (comma separated)
+          <input id="field-tags" type="text" placeholder="e.g. books, cozy, weekend" />
+        </label>
+
+        <div class="links-section">
+          <div class="links-header">
+            <span>Connected Notes</span>
+            <button type="button" id="btn-start-link" class="btn btn-small">+ Link Note</button>
+          </div>
+          <ul id="links-list" class="links-list"></ul>
+        </div>
+
+        <div id="suggestions-section" class="links-section hidden">
+          <div class="links-header"><span>Suggested Related Notes</span></div>
+          <ul id="suggestions-list" class="links-list"></ul>
+        </div>
+
+        <div class="form-footer">
+          <button type="button" id="btn-delete-note" class="btn btn-danger">Delete</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </aside>
+
+    <!-- Right: Plugins & Automations Drawer -->
+    <aside id="plugins-panel" class="side-panel right-panel hidden" aria-label="Plugins and Automations">
+      <div class="panel-header">
+        <div>
+          <h2>Plugins &amp; Automations</h2>
+          <p class="panel-sub">Extend your study with modular tools &amp; rules</p>
+        </div>
+        <button type="button" id="btn-close-plugins" class="btn btn-small" title="Close">✕</button>
+      </div>
+
+      <div class="plugin-quick-actions">
+        <button type="button" id="btn-daily-review" class="btn btn-primary btn-small">Daily Review</button>
+        <button type="button" id="btn-reset-recurring" class="btn btn-small">Reset #daily</button>
+        <button type="button" id="btn-run-auto-link" class="btn btn-small">Auto-Link Scan</button>
+        <button type="button" id="btn-run-auto-tag" class="btn btn-small">Apply Rules</button>
+        <button type="button" id="btn-plugin-export-md" class="btn btn-small">Export .md</button>
+      </div>
+
+      <div id="daily-review-box" class="daily-review-box hidden"></div>
+      <div id="plugins-list" class="plugins-list"></div>
+
+      <div class="links-section">
+        <div class="links-header"><span>Custom If/Then Rules</span></div>
+        <form id="rule-form" class="rule-form">
+          <input id="rule-keyword" type="text" placeholder="If text contains (e.g. 'book')…" required />
+          <div class="rule-row">
+            <select id="rule-action">
+              <option value="category">Set Category</option>
+              <option value="tag">Add #Tag</option>
+              <option value="pin">Pin Note</option>
+            </select>
+            <input id="rule-value" type="text" placeholder="e.g. Learning or reading" />
+          </div>
+          <button type="submit" class="btn btn-primary btn-small">+ Add Rule</button>
+        </form>
+        <ul id="rules-list" class="rules-list"></ul>
+      </div>
+
+      <div class="links-section">
+        <div class="links-header">
+          <span>Custom Plugin Loader (JS)</span>
+          <button type="button" id="btn-load-example-plugin" class="btn-ghost-xs">Load Example</button>
+        </div>
+        <form id="custom-plugin-form" class="rule-form">
+          <input id="custom-plugin-name" type="text" placeholder="Plugin name" />
+          <textarea id="custom-plugin-code" rows="3" placeholder="ThoughtDeskPlugins.register({ ... });"></textarea>
+          <button type="submit" class="btn btn-small">+ Install Plugin</button>
+        </form>
+        <ul id="custom-plugins-list" class="rules-list"></ul>
+      </div>
+    </aside>
+
+    <!-- Right: Desk Flip-Calendar Drawer -->
+    <aside id="calendar-panel" class="side-panel right-panel hidden" aria-label="Calendar and Schedule">
+      <div class="panel-header">
+        <div>
+          <h2>Study Calendar</h2>
+          <p class="panel-sub">Events within 3 days auto-pin to your Corkboard &amp; auto-clear after passing</p>
+        </div>
+        <button type="button" id="btn-close-calendar" class="btn btn-small" title="Close">✕</button>
+      </div>
+      <label class="cal-auto-toggle">
+        <input type="checkbox" id="chk-cal-autoprop" checked />
+        <span>Auto-pin upcoming (≤3 days) &amp; auto-delete expired notes</span>
+      </label>
+      <form id="calendar-add-form" class="game-add-form">
+        <input id="cal-title-input" type="text" placeholder="Add event or reminder…" required />
+        <div class="rule-row">
+          <input id="cal-date-input" type="date" required />
+          <input id="cal-time-input" type="time" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-small">+ Add to Calendar</button>
+      </form>
+      <ul id="calendar-list" class="bin-list"></ul>
+    </aside>
+
+    <!-- Right: Wooden Mail Tray Drawer -->
+    <aside id="mail-panel" class="side-panel right-panel hidden" aria-label="Mail and Follow-ups">
+      <div class="panel-header">
+        <div>
+          <h2>Mail Tray</h2>
+          <p class="panel-sub">Track email follow-ups &amp; Gmail summaries</p>
+        </div>
+        <button type="button" id="btn-close-mail" class="btn btn-small" title="Close">✕</button>
+      </div>
+      <button type="button" id="btn-load-gmail-digest" class="btn btn-small">Load Latest Gmail Summary</button>
+      <form id="mail-add-form" class="bin-quick-form">
+        <input id="mail-title-input" type="text" placeholder="Email follow-up (e.g. 'Reply to Alex')…" required />
+        <button type="submit" class="btn btn-primary btn-small">Add</button>
+      </form>
+      <ul id="mail-list" class="bin-list"></ul>
+    </aside>
+
+    <!-- Right: Google Drive Sync & Backup Manager -->
+    <aside id="sync-panel" class="side-panel right-panel hidden" aria-label="Sync and Backups">
+      <div class="panel-header">
+        <div>
+          <h2>Sync &amp; Backups</h2>
+          <p class="panel-sub">Isolated inside <code>App Sync &amp; Backups/</code> on Google Drive</p>
+        </div>
+        <button type="button" id="btn-close-sync" class="btn btn-small" title="Close">✕</button>
+      </div>
+
+      <div id="sync-status-box" class="rotation-meter">Local mode — sign in to sync with Google Drive</div>
+
+      <form id="sync-config-form" class="rule-form">
+        <input id="sync-client-id" type="text" placeholder="Google OAuth Client ID (for browser sync)…" autocomplete="off" />
+        <div class="plugin-quick-actions">
+          <button type="submit" class="btn btn-small">Save Client ID</button>
+          <button type="button" id="btn-drive-signin" class="btn btn-primary btn-small">Sign in with Google</button>
+          <button type="button" id="btn-drive-sync-now" class="btn btn-small">Backup Snapshot Now</button>
+        </div>
+      </form>
+
+      <div class="links-section">
+        <div class="links-header"><span>Upload Any File to App Sync &amp; Backups/</span></div>
+        <label class="btn btn-small" style="justify-content:center;cursor:pointer">
+          Choose File (OS junk auto-filtered)
+          <input id="input-drive-upload" type="file" hidden />
+        </label>
+      </div>
+
+      <div class="links-section">
+        <div class="links-header">
+          <span>Recovery Snapshots</span>
+          <button type="button" id="btn-refresh-snaps" class="btn-ghost-xs">Refresh</button>
+        </div>
+        <ul id="sync-snapshots-list" class="bin-list"></ul>
+      </div>
+    </aside>
+
+    <!-- Mobile Bottom Navigation (shown automatically on phones <= 768px) -->
+    <nav id="mobile-nav" class="mobile-nav" aria-label="Mobile Navigation">
+      <button type="button" class="mob-btn" data-mob="journal">Journal</button>
+      <button type="button" class="mob-btn" data-mob="binders">Binders</button>
+      <button type="button" class="mob-btn" data-mob="bin">Bin</button>
+      <button type="button" class="mob-btn" data-mob="games">Games</button>
+      <button type="button" class="mob-btn" data-mob="sync">Sync</button>
+    </nav>
+
+    <!-- Link banner & Toast -->
+    <div id="link-banner" class="link-banner hidden">
+      <span>Click another pinned note to connect it, or</span>
+      <button type="button" id="btn-cancel-link" class="btn btn-small">Cancel</button>
+    </div>
+    <div id="toast-banner" class="toast-banner hidden" role="status" aria-live="polite"></div>
+  </div>
+
+  <script src="plugins.js"></script>
+  <script src="sync.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
