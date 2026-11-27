@@ -1,4 +1,4 @@
-const CACHE_NAME = "thought-desk-pwa-v4";
+const CACHE_NAME = "thought-desk-pwa-v10";
 const ASSETS = [
   "./",
   "./index.html",

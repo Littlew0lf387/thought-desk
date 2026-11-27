@@ -277,7 +277,7 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
     } catch (_) {}
     if (window.ThoughtDeskSync) {
-      window.ThoughtDeskSync.scheduleAutoSync(() => ({ notes, bin: binNotes, spaces, activeSpace, games }), (statusText) => {
+      window.ThoughtDeskSync.scheduleAutoSync(() => ({ notes, bin: binNotes, spaces, activeSpace, games, mailItems, calEvents }), (statusText) => {
         const btn = document.getElementById("btn-sync-toggle");
         if (btn) btn.textContent = statusText === "Synced to Drive" ? "Synced" : "Sync";
       });
@@ -421,15 +421,16 @@
       fxCtx.fill();
     }
 
-    // 3. Steaming Mug wisps
+    // 3. Steaming Mug wisps (faster & brighter during active focus session)
+    const focusing = Boolean(focusInterval);
     for (const s of steamPuffs) {
-      s.y -= s.speed;
-      s.x += Math.sin(time * 1.6 + s.y * 0.04) * 0.25;
+      s.y -= s.speed * (focusing ? 1.7 : 1);
+      s.x += Math.sin(time * (focusing ? 2.2 : 1.6) + s.y * 0.04) * 0.25;
       if (s.y < 555) {
         s.y = 650;
         s.x = 1044 + (Math.random() - 0.5) * 12;
       }
-      const fade = Math.max(0, (s.y - 540) / 100) * 0.18;
+      const fade = Math.max(0, (s.y - 540) / 100) * (focusing ? 0.28 : 0.14);
       fxCtx.fillStyle = `rgba(248, 236, 220, ${fade})`;
       fxCtx.beginPath();
       fxCtx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
@@ -466,7 +467,7 @@
         const bx = 872 + (b.boardX ?? 160) + 73;
         const by = 140 + (b.boardY ?? 50) + 6;
         const hi = selectedId === n.id || selectedId === tid;
-        fxCtx.strokeStyle = hi ? "rgba(212, 115, 72, 0.9)" : "rgba(215, 180, 140, 0.45)";
+        fxCtx.strokeStyle = hi ? (yarnColor || "rgba(212, 115, 72, 0.9)") : "rgba(215, 180, 140, 0.45)";
         fxCtx.lineWidth = hi ? 2.4 : 1.5;
         fxCtx.beginPath();
         fxCtx.moveTo(ax, ay);
@@ -557,6 +558,12 @@
       addOpt.value = "__new__";
       addOpt.textContent = "+ New Shelf Section…";
       shelfSectionSelect.appendChild(addOpt);
+      if (spaces.length > 1) {
+        const delOpt = document.createElement("option");
+        delOpt.value = "__delete__";
+        delOpt.textContent = `- Delete "${activeSpace}"…`;
+        shelfSectionSelect.appendChild(delOpt);
+      }
     }
 
     // 1. Top Shelf: Dynamic Scrollable Binders (with auto-sort)
@@ -660,6 +667,22 @@
         }
         return;
       }
+      if (shelfSectionSelect.value === "__delete__") {
+        if (spaces.length <= 1) { showToast("Keep at least one shelf."); renderShelves(); return; }
+        const target = activeSpace;
+        const fallback = spaces.find((s) => s !== target);
+        if (confirm(`Delete shelf "${target}"? Notes on it will move to "${fallback}".`)) {
+          notes.forEach((n) => { if (n.space === target) n.space = fallback; });
+          spaces = spaces.filter((s) => s !== target);
+          activeSpace = fallback;
+          closeRightDrawers();
+          saveState();
+          showToast(`Deleted shelf "${target}"`);
+        } else {
+          renderShelves();
+        }
+        return;
+      }
       activeSpace = shelfSectionSelect.value;
       closeRightDrawers();
       saveState();
@@ -711,6 +734,23 @@
         showToast(`Updated ${category} binder color`);
       });
       colorBar.appendChild(sw);
+    }
+    if (customBinders.includes(category)) {
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "btn btn-danger btn-small";
+      delBtn.style.marginLeft = "auto";
+      delBtn.textContent = "Delete Binder";
+      delBtn.addEventListener("click", () => {
+        if (!confirm(`Delete custom binder "${category}"? Notes inside will move to Idea.`)) return;
+        customBinders = customBinders.filter((b) => b !== category);
+        localStorage.setItem("antigravity_thought_desk_binders_v1", JSON.stringify(customBinders));
+        notes.forEach((n) => { if (n.category === category) n.category = "Idea"; });
+        shelfDrawer.classList.add("hidden");
+        saveState();
+        showToast(`Deleted "${category}" binder`);
+      });
+      colorBar.appendChild(delBtn);
     }
     shelfDrawerList.appendChild(colorBar);
     const list = activeNotes()
@@ -789,12 +829,72 @@
       el.style.top = `${by}px`;
       el.style.transform = `rotate(${rot}deg)`;
 
-      const snippet = String(note.body || "").replace(/-\s*\[[x ]\]\s*/gi, "• ").trim();
+      const rawLines = String(note.body || "").split("\n");
+      const checkIndices = [];
+      rawLines.forEach((ln, li) => {
+        if (/^\s*-\s*\[[x ]\]\s+/i.test(ln)) checkIndices.push(li);
+      });
+      const textSnippet = rawLines
+        .filter((_, li) => !checkIndices.includes(li))
+        .join(" ")
+        .trim();
+
+      let checksHtml = "";
+      if (checkIndices.length > 0) {
+        checksHtml = `<div class="cork-check-list">${checkIndices.slice(0, 3).map((li) => {
+          const ln = rawLines[li];
+          const done = /^\s*-\s*\[x\]/i.test(ln);
+          const label = ln.replace(/^\s*-\s*\[[x ]\]\s+/i, "").trim();
+          return `<label class="cork-check-row ${done ? "done" : ""}"><input type="checkbox" data-line-idx="${li}" ${done ? "checked" : ""} /><span>${escapeHtml(label)}</span></label>`;
+        }).join("")}</div>`;
+      }
+
       el.innerHTML = `
         <div class="cork-note-cat">${note.pinned ? "★ " : ""}${escapeHtml(note.category)}</div>
         <h3 class="cork-note-title">${escapeHtml(note.title)}</h3>
-        ${snippet ? `<p class="cork-note-snippet">${escapeHtml(snippet)}</p>` : ""}
+        ${textSnippet ? `<p class="cork-note-snippet">${escapeHtml(textSnippet)}</p>` : ""}
+        ${checksHtml}
       `;
+
+      el.querySelectorAll(".cork-check-row").forEach((lbl) => {
+        lbl.addEventListener("pointerdown", (e) => e.stopPropagation());
+        lbl.addEventListener("click", (e) => e.stopPropagation());
+        const cb = lbl.querySelector("input");
+        cb?.addEventListener("change", () => {
+          const lineIdx = Number(cb.dataset.lineIdx);
+          const lines = String(note.body || "").split("\n");
+          if (lines[lineIdx] !== undefined) {
+            lines[lineIdx] = cb.checked
+              ? lines[lineIdx].replace(/\[ \]/, "[x]")
+              : lines[lineIdx].replace(/\[x\]/i, "[ ]");
+            note.body = lines.join("\n");
+            note.updatedAt = Date.now();
+            saveState();
+          }
+        });
+      });
+
+      el.addEventListener("pointerenter", () => {
+        const linked = new Set(note.links || []);
+        if (linked.size === 0) return;
+        corkboardEl.querySelectorAll(".cork-note").forEach((cardEl, cIdx) => {
+          const other = corkNotes[cIdx];
+          if (!other) return;
+          if (other.id === note.id || linked.has(other.id)) cardEl.classList.add("yarn-hover");
+          else cardEl.classList.add("dim-hover");
+        });
+      });
+      el.addEventListener("pointerleave", () => {
+        corkboardEl.querySelectorAll(".cork-note").forEach((cardEl) => {
+          cardEl.classList.remove("yarn-hover", "dim-hover");
+        });
+      });
+
+      el.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openCorkContextMenu(note.id, e.clientX, e.clientY);
+      });
 
       let dragging = false, moved = false, sx = 0, sy = 0, origX = bx, origY = by;
       el.addEventListener("pointerdown", (e) => {
@@ -926,6 +1026,19 @@
     saveState();
     loadJournalPage(entry);
     journalBody.focus();
+  });
+
+  document.getElementById("btn-journal-delete")?.addEventListener("click", () => {
+    const idx = notes.findIndex((n) => n.id === activeJournalId);
+    if (idx === -1) return;
+    if (!confirm("Delete this journal entry?")) return;
+    notes.splice(idx, 1);
+    saveState();
+    const remaining = notes.filter((n) => !n.archived && n.category === "Journal")
+      .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+    const next = remaining[0] || (() => { const fresh = createJournalNoteObj(); notes.unshift(fresh); saveState(); return fresh; })();
+    loadJournalPage(next);
+    showToast("Deleted journal entry");
   });
 
   journalForm.addEventListener("submit", (e) => {
@@ -1093,6 +1206,39 @@
     showToast(status === "playing" ? `Added "${title}" to Active Rotation` : `Added "${title}" to Resting Backlog (Rotation full)`);
   });
 
+  document.getElementById("btn-import-steam")?.addEventListener("click", async () => {
+    try {
+      const res = await fetch("steam-library.json?cb=" + Date.now());
+      if (!res.ok) throw new Error("No steam-library.json found yet — run import-steam.ps1 first");
+      const data = await res.json();
+      const list = Array.isArray(data.games) ? data.games : [];
+      const colors = ["#d49a42", "#57a37e", "#9c7ec7", "#5c8ec4", "#d47348"];
+      let added = 0;
+      for (const sg of list) {
+        const sid = "steam_" + (sg.appid || sg.title);
+        const norm = String(sg.title || "").trim().toLowerCase();
+        if (!norm) continue;
+        if (games.some((g) => g.id === sid || g.title.trim().toLowerCase() === norm)) continue;
+        games.push({
+          id: sid,
+          title: sg.title.trim(),
+          status: "backlog",
+          platform: sg.platform || "PC",
+          vibe: "Cozy",
+          hours: sg.hours || "0 hrs",
+          note: "Imported from Steam",
+          color: colors[games.length % colors.length],
+        });
+        added++;
+      }
+      saveState();
+      openGamesPanel("backlog");
+      showToast(added ? `Imported ${added} Steam game${added === 1 ? "" : "s"} into Backlog` : "Steam library is already up to date");
+    } catch (err) {
+      showToast(err.message);
+    }
+  });
+
   // ── Drawers, Editor, Bin, Outline, Plugins ────────────────────────────────
   function closeRightDrawers() {
     inspector.classList.add("hidden");
@@ -1100,6 +1246,7 @@
     pluginsPanel.classList.add("hidden");
     gamesPanel.classList.add("hidden");
     if (typeof shelfDrawer !== "undefined" && shelfDrawer) shelfDrawer.classList.add("hidden");
+    document.getElementById("scratchpad-card")?.classList.add("hidden");
     const calP = document.getElementById("calendar-panel");
     const mailP = document.getElementById("mail-panel");
     const syncP = document.getElementById("sync-panel");
@@ -1132,6 +1279,7 @@
     fieldCategory.value = note.category;
     fieldBody.value = note.body || "";
     fieldTags.value = (note.tags || []).join(", ");
+    renderAttachments(note);
     renderLinksAndSuggestions(note);
     inspector.classList.remove("hidden");
     renderCorkboard();
@@ -1404,6 +1552,28 @@
   hotspotJournal.addEventListener("click", () => openJournalSpread());
 
   let focusSeconds = 25 * 60;
+  function playFocusChime() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      [528, 792].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        const start = ctx.currentTime + idx * 0.18;
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.exponentialRampToValueAtTime(0.12, start + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 1.4);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 1.45);
+      });
+    } catch (_) {}
+  }
+
   let focusInterval = null;
   hotspotMug.addEventListener("click", (e) => {
     if (e.shiftKey) {
@@ -1425,6 +1595,7 @@
         if (focusSeconds <= 0) {
           clearInterval(focusInterval); focusInterval = null; focusSeconds = 25 * 60;
           mugTimerBadge.classList.remove("running");
+          playFocusChime();
           showToast("Focus session complete! Take a breather.");
         }
         mugTimerBadge.textContent = `${String(Math.floor(focusSeconds / 60)).padStart(2, "0")}:${String(focusSeconds % 60).padStart(2, "0")}`;
@@ -1807,10 +1978,23 @@
 
   // Keyboard & Steam Deck / Gamepad shortcuts
   window.addEventListener("keydown", (e) => {
-    if (e.target.matches("input,textarea,select")) { if (e.key === "Escape") e.target.blur(); return; }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleQuickJump();
+      return;
+    }
+    if (e.target.matches("input,textarea,select")) {
+      if (e.key === "Escape") {
+        if (e.target.id === "quick-jump-input") closeQuickJump();
+        else e.target.blur();
+      }
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key.toLowerCase();
     if (e.key === "Escape") {
-      closeAllPopovers(); exitLinkMode();
+      closeAllPopovers(); exitLinkMode(); closeQuickJump(); closeCorkContextMenu();
       if (!journalModal.classList.contains("hidden")) { journalModal.classList.add("hidden"); return; }
       closeRightDrawers(); renderRecall();
     } else if (k === "j") { e.preventDefault(); openJournalSpread(); }
@@ -2110,6 +2294,28 @@
   const syncClientIdInput = document.getElementById("sync-client-id");
   const syncSnapshotsList = document.getElementById("sync-snapshots-list");
 
+  function applySyncedState(d) {
+    if (!d || !Array.isArray(d.notes)) return false;
+    notes = d.notes;
+    binNotes = Array.isArray(d.bin) ? d.bin : [];
+    if (Array.isArray(d.spaces) && d.spaces.length) spaces = d.spaces;
+    if (d.activeSpace) activeSpace = d.activeSpace;
+    if (Array.isArray(d.games)) games = d.games;
+    if (Array.isArray(d.mailItems)) {
+      mailItems = d.mailItems;
+      localStorage.setItem(MAIL_KEY, JSON.stringify(mailItems));
+      renderMailPanel();
+    }
+    if (Array.isArray(d.calEvents)) {
+      calEvents = d.calEvents;
+      localStorage.setItem(CAL_KEY, JSON.stringify(calEvents));
+      renderCalendarPanel();
+    }
+    syncCalendarReminders();
+    saveState();
+    return true;
+  }
+
   async function renderSyncPanel() {
     const S = window.ThoughtDeskSync;
     if (!S) return;
@@ -2133,10 +2339,7 @@
       li.querySelector(".js-rest-drive").addEventListener("click", async () => {
         try {
           const data = await S.downloadDriveFile(ds.id);
-          if (data && Array.isArray(data.notes)) {
-            notes = data.notes; binNotes = data.bin || []; spaces = data.spaces || spaces; activeSpace = data.activeSpace || activeSpace; games = data.games || games;
-            saveState(); showToast("Restored from Google Drive snapshot!");
-          }
+          if (applySyncedState(data)) { renderSyncPanel(); showToast("Restored from Google Drive snapshot!"); }
         } catch (err) { showToast(err.message); }
       });
       syncSnapshotsList.appendChild(li);
@@ -2146,11 +2349,7 @@
       const li = document.createElement("li"); li.className = "bin-item";
       li.innerHTML = `<div class="bin-item-head"><span class="bin-item-title">${escapeHtml(ls.label)} (${ls.noteCount} notes)</span><span class="outline-age">${escapeHtml(new Date(ls.ts).toLocaleTimeString())}</span></div><div class="bin-item-actions"><button type="button" class="btn btn-small js-rest-local">Restore Local</button></div>`;
       li.querySelector(".js-rest-local").addEventListener("click", () => {
-        const d = ls.data;
-        if (d && Array.isArray(d.notes)) {
-          notes = d.notes; binNotes = d.bin || []; spaces = d.spaces || spaces; activeSpace = d.activeSpace || activeSpace; games = d.games || games;
-          saveState(); showToast("Restored local snapshot!");
-        }
+        if (applySyncedState(ls.data)) { renderSyncPanel(); showToast("Restored local snapshot!"); }
       });
       syncSnapshotsList.appendChild(li);
     }
@@ -2162,15 +2361,6 @@
     closeRightDrawers();
     if (opening) { renderSyncPanel(); syncPanel.classList.remove("hidden"); }
   });
-  const menuSyncBtn = document.getElementById("btn-menu-sync");
-  if (menuSyncBtn) {
-    menuSyncBtn.addEventListener("click", () => {
-      closeAllPopovers();
-      closeRightDrawers();
-      renderSyncPanel();
-      syncPanel.classList.remove("hidden");
-    });
-  }
   document.getElementById("btn-close-sync").addEventListener("click", () => syncPanel.classList.add("hidden"));
   document.getElementById("btn-refresh-snaps").addEventListener("click", renderSyncPanel);
 
@@ -2199,19 +2389,11 @@
     try {
       await S.signIn();
       const pulled = await S.pullLiveFromDrive();
-      if (pulled.found && pulled.data && Array.isArray(pulled.data.notes)) {
-        const d = pulled.data;
-        notes = d.notes;
-        binNotes = Array.isArray(d.bin) ? d.bin : [];
-        if (Array.isArray(d.spaces) && d.spaces.length) spaces = d.spaces;
-        if (d.activeSpace) activeSpace = d.activeSpace;
-        if (Array.isArray(d.games)) games = d.games;
-        syncCalendarReminders();
-        saveState();
+      if (pulled.found && applySyncedState(pulled.data)) {
         renderSyncPanel();
         showToast("Signed in & loaded latest study from Google Drive!");
       } else {
-        await S.syncNow({ notes, bin: binNotes, spaces, activeSpace, games }, true);
+        await S.syncNow({ notes, bin: binNotes, spaces, activeSpace, games, mailItems, calEvents }, true);
         renderSyncPanel();
         showToast("Signed in & synced to App Sync & Backups/!");
       }
@@ -2220,10 +2402,45 @@
     }
   });
 
+  document.getElementById("btn-drive-signin-redirect")?.addEventListener("click", () => {
+    const S = window.ThoughtDeskSync; if (!S) return;
+    try { S.signInRedirect(); } catch (err) { showToast(err.message); }
+  });
+
+  document.getElementById("btn-cal-pull-google")?.addEventListener("click", async () => {
+    const S = window.ThoughtDeskSync; if (!S) return;
+    try {
+      const events = await S.fetchCalendarEvents(14);
+      let added = 0;
+      for (const ev of events) {
+        if (!calEvents.some((c) => c.id === ev.id)) {
+          calEvents.push(ev);
+          added++;
+        }
+      }
+      localStorage.setItem(CAL_KEY, JSON.stringify(calEvents));
+      syncCalendarReminders();
+      renderCalendarPanel();
+      saveState();
+      showToast(added ? `Synced ${added} Google Calendar event${added === 1 ? "" : "s"}` : "Calendar is already up to date");
+    } catch (err) {
+      showToast(err.message);
+    }
+  });
+
+  if (window.ThoughtDeskSync?.didRedirectSignIn()) {
+    window.ThoughtDeskSync.pullLiveFromDrive().then((pulled) => {
+      if (pulled.found && applySyncedState(pulled.data)) {
+        renderSyncPanel();
+        showToast("Signed in via redirect & synced Drive!");
+      }
+    }).catch((err) => showToast(err.message));
+  }
+
   document.getElementById("btn-drive-sync-now").addEventListener("click", async () => {
     const S = window.ThoughtDeskSync; if (!S) return;
     try {
-      const res = await S.syncNow({ notes, bin: binNotes, spaces, activeSpace, games }, true);
+      const res = await S.syncNow({ notes, bin: binNotes, spaces, activeSpace, games, mailItems, calEvents }, true);
       renderSyncPanel();
       showToast(res.mode === "drive" ? "Snapshot saved to Google Drive!" : "Local snapshot saved!");
     } catch (err) {
@@ -2343,6 +2560,311 @@
         document.getElementById("btn-sync-toggle").click();
       }
     });
+  });
+
+  // ── Pin Style, Yarn Color, and Companion / Pup Hood Hotspots ─────────────
+  const PIN_KEY = "antigravity_thought_desk_pin_v1";
+  const YARN_KEY = "antigravity_thought_desk_yarn_v1";
+  let pinStyle = localStorage.getItem(PIN_KEY) || "tack";
+  let yarnColor = localStorage.getItem(YARN_KEY) || "rgba(212, 115, 72, 0.85)";
+  function applyBoardStyles() {
+    if (corkboardEl) corkboardEl.setAttribute("data-pin", pinStyle);
+    document.querySelectorAll("[data-pin-style]").forEach((b) => b.classList.toggle("active", b.dataset.pinStyle === pinStyle));
+    document.querySelectorAll("[data-yarn-color]").forEach((b) => b.classList.toggle("active", b.dataset.yarnColor === yarnColor));
+  }
+  document.querySelectorAll("[data-pin-style]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      pinStyle = btn.dataset.pinStyle;
+      localStorage.setItem(PIN_KEY, pinStyle);
+      applyBoardStyles();
+      showToast(`Corkboard pins: ${btn.textContent}`);
+    });
+  });
+  document.querySelectorAll("[data-yarn-color]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      yarnColor = btn.dataset.yarnColor;
+      localStorage.setItem(YARN_KEY, yarnColor);
+      applyBoardStyles();
+      showToast(`Yarn color: ${btn.textContent}`);
+    });
+  });
+  applyBoardStyles();
+
+  const JOURNAL_PROMPTS = [
+    "What is one small thing on your mind right now?",
+    "What felt cozy or grounding today?",
+    "What is one thing you can let go of tonight?",
+    "If tomorrow had one gentle win, what would it be?",
+    "What are you curious to explore next?",
+  ];
+  let promptIdx = 0;
+  document.getElementById("btn-journal-prompt")?.addEventListener("click", () => {
+    promptIdx = (promptIdx + 1) % JOURNAL_PROMPTS.length;
+    const el = document.getElementById("journal-prompt-text");
+    if (el) el.textContent = JOURNAL_PROMPTS[promptIdx];
+  });
+
+  const NOTE_TEMPLATES = {
+    dnd: "Session Summary:\n- Location:\n- Key NPCs:\n\nNext Hook:\n- [ ] Prep encounter / notes",
+    project: "Goal:\n\nNext Steps:\n- [ ] Step 1\n- [ ] Step 2\n\nOpen Questions:\n- ",
+    daily: "Top 3 Today:\n- [ ] \n- [ ] \n- [ ] \n\nEvening Wind-Down:\n- ",
+  };
+  document.getElementById("note-template-select")?.addEventListener("change", (e) => {
+    const key = e.target.value;
+    if (!key || !NOTE_TEMPLATES[key]) return;
+    const bodyEl = document.getElementById("field-body");
+    if (bodyEl) {
+      bodyEl.value = bodyEl.value.trim() ? `${bodyEl.value.trim()}\n\n${NOTE_TEMPLATES[key]}` : NOTE_TEMPLATES[key];
+      bodyEl.focus();
+    }
+    e.target.value = "";
+    showToast("Inserted template");
+  });
+
+  document.getElementById("hotspot-hood")?.addEventListener("click", () => {
+    openShelfBinder("Personal");
+    showToast("Opened Personal binder");
+  });
+  document.getElementById("hotspot-fox")?.addEventListener("click", () => {
+    openJournalSpread();
+    showToast("Fox check-in: take a quiet minute to jot a thought");
+  });
+  document.getElementById("hotspot-wolf")?.addEventListener("click", () => {
+    const activeCount = activeNotes().length;
+    const playingCount = games.filter((g) => g.status === "playing").length;
+    showToast(`Wolf Den: ${activeCount} notes · ${playingCount}/${MAX_ACTIVE_GAMES} games · ${calEvents.length} reminders`);
+  });
+
+  // ── Note Photo/File Attachments & Fleeting Desk-Mat Scratchpad ────────────
+  const attachInput = document.getElementById("note-attach-input");
+  const attachList = document.getElementById("note-attach-list");
+
+  function renderAttachments(note) {
+    if (!attachList) return;
+    attachList.innerHTML = "";
+    const list = Array.isArray(note?.attachments) ? note.attachments : [];
+    for (let i = 0; i < list.length; i++) {
+      const att = list[i];
+      const chip = document.createElement("div");
+      chip.className = "attach-chip";
+      const preview = att.dataUrl ? `<img src="${att.dataUrl}" class="attach-thumb" alt="" />` : "";
+      const label = att.driveUrl
+        ? `<a class="attach-name" href="${escapeHtml(att.driveUrl)}" target="_blank" rel="noopener">${escapeHtml(att.name)}</a>`
+        : `<span class="attach-name">${escapeHtml(att.name)}</span>`;
+      chip.innerHTML = `${preview}${label}<button type="button" class="btn-ghost-xs" title="Remove">×</button>`;
+      chip.querySelector("button").addEventListener("click", () => {
+        note.attachments.splice(i, 1);
+        saveState();
+        renderAttachments(note);
+      });
+      attachList.appendChild(chip);
+    }
+  }
+
+  attachInput?.addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    const note = notes.find((n) => n.id === editingId);
+    if (!note || files.length === 0) return;
+    note.attachments = Array.isArray(note.attachments) ? note.attachments : [];
+    const S = window.ThoughtDeskSync;
+    for (const file of files) {
+      if (S && S.isIgnoredJunkFile(file.name)) continue;
+      const item = { name: file.name, type: file.type, size: file.size };
+      if (file.type.startsWith("image/") && file.size <= 260000) {
+        item.dataUrl = await new Promise((res) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result);
+          r.onerror = () => res(null);
+          r.readAsDataURL(file);
+        });
+      }
+      if (S && S.isSignedIn()) {
+        try {
+          const uploaded = await S.uploadGeneralFile(file);
+          if (uploaded?.id) {
+            item.driveId = uploaded.id;
+            item.driveUrl = `https://drive.google.com/file/d/${uploaded.id}/view`;
+          }
+        } catch (_) {}
+      }
+      note.attachments.push(item);
+    }
+    note.updatedAt = Date.now();
+    saveState();
+    renderAttachments(note);
+    e.target.value = "";
+    showToast(`Attached ${files.length} file${files.length === 1 ? "" : "s"}`);
+  });
+
+  const SCRATCH_KEY = "antigravity_thought_desk_scratch_v1";
+  const scratchCard = document.getElementById("scratchpad-card");
+  const scratchText = document.getElementById("scratchpad-text");
+  if (scratchText) {
+    scratchText.value = sessionStorage.getItem(SCRATCH_KEY) || "";
+    scratchText.addEventListener("input", () => {
+      try { sessionStorage.setItem(SCRATCH_KEY, scratchText.value); } catch (_) {}
+    });
+  }
+  document.getElementById("hotspot-deskmat")?.addEventListener("click", () => {
+    closeAllPopovers();
+    closeRightDrawers();
+    scratchCard?.classList.remove("hidden");
+    scratchText?.focus();
+  });
+  document.getElementById("btn-close-scratchpad")?.addEventListener("click", () => scratchCard?.classList.add("hidden"));
+  document.getElementById("btn-scratch-clear")?.addEventListener("click", () => {
+    if (scratchText) scratchText.value = "";
+    sessionStorage.removeItem(SCRATCH_KEY);
+  });
+  document.getElementById("btn-scratch-promote")?.addEventListener("click", () => {
+    const txt = (scratchText?.value || "").trim();
+    if (!txt) { showToast("Scratchpad is empty"); return; }
+    const firstLine = txt.split("\n")[0].slice(0, 48);
+    const spot = findFreeCorkSpot();
+    const n = {
+      id: "n_" + Date.now().toString(36),
+      title: firstLine || "Desk Note",
+      body: txt,
+      category: "Idea",
+      tags: ["scratchpad"],
+      links: [],
+      pinned: true,
+      space: activeSpace,
+      archived: false,
+      boardX: spot.x,
+      boardY: spot.y,
+      rot: -1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    notes.push(n);
+    if (scratchText) scratchText.value = "";
+    sessionStorage.removeItem(SCRATCH_KEY);
+    scratchCard?.classList.add("hidden");
+    saveState();
+    showToast("Promoted scratchpad to Corkboard note!");
+  });
+
+  // ── Quick Jump Palette (Ctrl+K), Evening Wind-Down & Corkboard Context Menu ─
+  const quickJumpModal = document.getElementById("quick-jump-modal");
+  const quickJumpInput = document.getElementById("quick-jump-input");
+  const quickJumpList = document.getElementById("quick-jump-list");
+  let quickJumpItems = [];
+
+  function closeQuickJump() {
+    quickJumpModal?.classList.add("hidden");
+  }
+  function toggleQuickJump() {
+    if (!quickJumpModal) return;
+    const opening = quickJumpModal.classList.contains("hidden");
+    closeAllPopovers();
+    closeCorkContextMenu();
+    if (opening) {
+      quickJumpModal.classList.remove("hidden");
+      if (quickJumpInput) { quickJumpInput.value = ""; quickJumpInput.focus(); }
+      renderQuickJump("");
+    } else {
+      closeQuickJump();
+    }
+  }
+  function renderQuickJump(query) {
+    if (!quickJumpList) return;
+    const q = String(query || "").trim().toLowerCase();
+    const entries = [];
+    for (const n of activeNotes()) {
+      entries.push({ label: n.title, kind: n.category, run: () => openEditor(n.id) });
+    }
+    for (const b of getAllBinderNames()) {
+      entries.push({ label: `${b} Binder`, kind: "Binder", run: () => openShelfBinder(b) });
+    }
+    for (const g of games) {
+      entries.push({ label: g.title, kind: g.status === "playing" ? "Playing" : "Game", run: () => openGamesPanel(g.status) });
+    }
+    entries.push(
+      { label: "Open Daily Journal", kind: "Action", run: () => openJournalSpread() },
+      { label: "Evening Wind-Down", kind: "Action", run: () => runEveningWindDown() },
+      { label: "Toggle Lamp Theme", kind: "Action", run: () => document.getElementById("hotspot-lamp")?.click() },
+      { label: "Start / Pause 25m Focus", kind: "Action", run: () => document.getElementById("hotspot-mug")?.click() },
+      { label: "Open Sync & Backups", kind: "Action", run: () => document.getElementById("btn-sync-toggle")?.click() }
+    );
+    quickJumpItems = (q ? entries.filter((it) => it.label.toLowerCase().includes(q) || it.kind.toLowerCase().includes(q)) : entries).slice(0, 12);
+    quickJumpList.innerHTML = "";
+    quickJumpItems.forEach((it, idx) => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `quick-jump-item ${idx === 0 ? "active" : ""}`;
+      btn.innerHTML = `<span>${escapeHtml(it.label)}</span><span class="quick-jump-kind">${escapeHtml(it.kind)}</span>`;
+      btn.addEventListener("click", () => { closeQuickJump(); it.run(); });
+      li.appendChild(btn);
+      quickJumpList.appendChild(li);
+    });
+  }
+  quickJumpInput?.addEventListener("input", () => renderQuickJump(quickJumpInput.value));
+  quickJumpInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && quickJumpItems.length > 0) {
+      e.preventDefault();
+      const first = quickJumpItems[0];
+      closeQuickJump();
+      first.run();
+    }
+  });
+  quickJumpModal?.addEventListener("click", (e) => { if (e.target === quickJumpModal) closeQuickJump(); });
+
+  async function runEveningWindDown() {
+    closeAllPopovers();
+    let tidied = 0;
+    for (const n of activeNotes()) {
+      if (n.category === "To-Do") {
+        const body = String(n.body || "");
+        const hasChecked = /-\s*\[x\]/i.test(body);
+        const hasUnchecked = /-\s*\[ \]/i.test(body);
+        if (hasChecked && !hasUnchecked) {
+          n.archived = true;
+          n.updatedAt = Date.now();
+          tidied++;
+        }
+      }
+    }
+    saveState();
+    if (window.ThoughtDeskSync?.isSignedIn()) {
+      try { await window.ThoughtDeskSync.syncNow({ notes, bin: binNotes, spaces, activeSpace, games, mailItems, calEvents }, true); } catch (_) {}
+    }
+    openJournalSpread();
+    showToast(tidied ? `Evening Wind-Down: archived ${tidied} completed To-Do${tidied === 1 ? "" : "s"} & backed up` : "Evening Wind-Down: backed up & opened journal");
+  }
+  document.getElementById("btn-wind-down")?.addEventListener("click", runEveningWindDown);
+
+  const corkCtxMenu = document.getElementById("cork-context-menu");
+  let ctxNoteId = null;
+  function closeCorkContextMenu() {
+    corkCtxMenu?.classList.add("hidden");
+    ctxNoteId = null;
+  }
+  function openCorkContextMenu(noteId, x, y) {
+    if (!corkCtxMenu) return;
+    ctxNoteId = noteId;
+    corkCtxMenu.style.left = `${Math.min(x, window.innerWidth - 170)}px`;
+    corkCtxMenu.style.top = `${Math.min(y, window.innerHeight - 190)}px`;
+    corkCtxMenu.classList.remove("hidden");
+  }
+  corkCtxMenu?.querySelectorAll("[data-ctx]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = ctxNoteId;
+      const act = btn.dataset.ctx;
+      closeCorkContextMenu();
+      if (!id) return;
+      if (act === "open") openEditor(id);
+      else if (act === "pin") togglePin(id);
+      else if (act === "link") { selectedId = id; startLinkMode(); }
+      else if (act === "bin") moveNoteToBin(id);
+      else if (act === "archive") archiveNote(id);
+    });
+  });
+  document.addEventListener("click", (e) => {
+    if (corkCtxMenu && !corkCtxMenu.classList.contains("hidden") && !e.target.closest("#cork-context-menu")) {
+      closeCorkContextMenu();
+    }
   });
 
   // Boot

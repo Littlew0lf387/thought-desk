@@ -22,13 +22,29 @@
         <!-- Live Atmospheric FX: Fairy light glow, Lamp light beam, Mug steam, Dust motes, Yarn links -->
         <canvas id="fx-canvas" width="1600" height="900"></canvas>
 
-        <!-- Direct Room Object Hotspots (aligned to Concept B furniture) -->
+        <!-- Direct Room Object Hotspots (aligned to Woodland Study furniture) -->
+        <button type="button" id="hotspot-fox" class="room-hotspot hotspot-fox" title="Click Plush Fox for a cozy Journal Check-In">
+          <span class="hotspot-tag">Fox Check-In</span>
+        </button>
+
         <button type="button" id="hotspot-lamp" class="room-hotspot hotspot-lamp" title="Click Desk Lamp to toggle Evening / Soft Daylight">
           <span class="hotspot-tag">Theme</span>
         </button>
 
+        <button type="button" id="hotspot-hood" class="room-hotspot hotspot-hood" title="Click Pup Hood to open Personal Binder">
+          <span class="hotspot-tag">Personal</span>
+        </button>
+
+        <button type="button" id="hotspot-wolf" class="room-hotspot hotspot-wolf" title="Click Wolf Figurine for Study Focus">
+          <span class="hotspot-tag">Wolf Focus</span>
+        </button>
+
         <button type="button" id="hotspot-journal" class="room-hotspot hotspot-journal" title="Open 2-Page Daily Journal (J)">
           <span class="hotspot-tag">Open Journal</span>
+        </button>
+
+        <button type="button" id="hotspot-deskmat" class="room-hotspot hotspot-deskmat" title="Click Desk Mat for Fleeting Scratchpad">
+          <span class="hotspot-tag">Scratchpad</span>
         </button>
 
         <button type="button" id="hotspot-mug" class="room-hotspot hotspot-mug" title="Click Mug to start/pause 25m Focus Timer (Shift+Click to reset)">
@@ -94,6 +110,19 @@
         <div id="filter-popover" class="popover hidden">
           <div class="popover-title">Filter by Category</div>
           <div id="category-bar" class="category-pills"></div>
+          <div class="popover-title" style="margin-top:10px">Corkboard Pin Style</div>
+          <div class="category-pills" id="pin-style-bar">
+            <button type="button" class="filter-pill" data-pin-style="tack">Brass Tack</button>
+            <button type="button" class="filter-pill" data-pin-style="tape">Washi Tape</button>
+            <button type="button" class="filter-pill" data-pin-style="leaf">Leaf Pin</button>
+          </div>
+          <div class="popover-title" style="margin-top:10px">Yarn Color</div>
+          <div class="category-pills" id="yarn-color-bar">
+            <button type="button" class="filter-pill" data-yarn-color="rgba(212, 115, 72, 0.85)">Copper</button>
+            <button type="button" class="filter-pill" data-yarn-color="rgba(87, 163, 126, 0.85)">Sage</button>
+            <button type="button" class="filter-pill" data-yarn-color="rgba(212, 154, 66, 0.85)">Amber</button>
+            <button type="button" class="filter-pill" data-yarn-color="rgba(156, 126, 199, 0.85)">Violet</button>
+          </div>
         </div>
       </div>
 
@@ -107,7 +136,7 @@
         <div id="data-menu" class="popover menu-list hidden">
           <button type="button" id="btn-theme-toggle" class="menu-item">Switch to Soft Daylight</button>
           <button type="button" id="btn-zen-mode" class="menu-item">Toggle Wallpaper Zen Mode</button>
-          <button type="button" id="btn-menu-sync" class="menu-item">Sync &amp; Backups (Google Drive)</button>
+          <button type="button" id="btn-wind-down" class="menu-item">Evening Wind-Down</button>
           <button type="button" id="btn-tidy" class="menu-item">Neatly Arrange Corkboard</button>
           <button type="button" id="btn-export-md" class="menu-item">Export Markdown (.md)</button>
           <button type="button" id="btn-export" class="menu-item">Export Backup (.json)</button>
@@ -166,7 +195,10 @@
               <button type="button" class="mood-btn" data-mood="😮‍💨" title="Tired">😮‍💨</button>
             </div>
           </div>
-          <p class="journal-prompt-line">Prompt: <em>What is one small thing on your mind right now?</em></p>
+          <div class="journal-prompt-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <p class="journal-prompt-line">Prompt: <em id="journal-prompt-text">What is one small thing on your mind right now?</em></p>
+            <button type="button" id="btn-journal-prompt" class="btn-ghost-xs" title="Cycle cozy reflection prompt">New Prompt</button>
+          </div>
           <div class="journal-past-label">Recent Entries</div>
           <ul id="journal-entries-list" class="journal-entries-list"></ul>
         </div>
@@ -181,7 +213,8 @@
           <textarea id="journal-body" class="journal-spread-body" placeholder="Write freely… (supports - [ ] checklists and #tags)"></textarea>
           <div class="journal-spread-footer">
             <span id="journal-word-count" class="journal-meta-muted">0 words</span>
-            <div style="display:flex;gap:6px">
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button type="button" id="btn-journal-delete" class="btn btn-danger btn-small" title="Delete current journal entry">Delete</button>
               <button type="button" id="btn-journal-gdoc" class="btn btn-small" title="Export journal entries to a Google Doc">To Google Doc</button>
               <button type="button" id="btn-journal-new" class="btn btn-small">+ Blank Page</button>
               <button type="submit" class="btn btn-primary btn-small">Save Page</button>
@@ -246,7 +279,10 @@
             <option value="Puzzle">Puzzle</option>
           </select>
         </div>
-        <button type="submit" class="btn btn-primary btn-small">+ Add to Catalogue</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button type="submit" class="btn btn-primary btn-small">+ Add to Catalogue</button>
+          <button type="button" id="btn-import-steam" class="btn btn-small" title="Import games from steam-library.json into Backlog">Import Steam Library</button>
+        </div>
       </form>
 
       <div class="game-tabs" role="tablist">
@@ -328,7 +364,15 @@
         <label>
           <span class="label-row">
             <span>Notes (supports <code>- [ ]</code> checklists)</span>
-            <button type="button" id="btn-add-check" class="btn-ghost-xs">+ Checklist item</button>
+            <span style="display:flex;gap:4px;align-items:center">
+              <select id="note-template-select" style="width:auto;padding:2px 6px;font-size:10.5px" title="Insert Note Template">
+                <option value="">Template…</option>
+                <option value="dnd">D&amp;D Session</option>
+                <option value="project">Project Brief</option>
+                <option value="daily">Daily Checklist</option>
+              </select>
+              <button type="button" id="btn-add-check" class="btn-ghost-xs">+ Checklist item</button>
+            </span>
           </span>
           <textarea id="field-body" rows="6" placeholder="Write freely, or add - [ ] checklist items…"></textarea>
         </label>
@@ -337,6 +381,17 @@
           Tags (comma separated)
           <input id="field-tags" type="text" placeholder="e.g. books, cozy, weekend" />
         </label>
+
+        <div class="links-section">
+          <div class="links-header">
+            <span>Photos &amp; Files</span>
+            <label class="btn btn-small" style="cursor:pointer;margin:0">
+              + Attach
+              <input id="note-attach-input" type="file" multiple hidden />
+            </label>
+          </div>
+          <div id="note-attach-list" class="attach-list"></div>
+        </div>
 
         <div class="links-section">
           <div class="links-header">
@@ -429,7 +484,10 @@
           <input id="cal-date-input" type="date" required />
           <input id="cal-time-input" type="time" />
         </div>
-        <button type="submit" class="btn btn-primary btn-small">+ Add to Calendar</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button type="submit" class="btn btn-primary btn-small">+ Add to Calendar</button>
+          <button type="button" id="btn-cal-pull-google" class="btn btn-small" title="Pull upcoming events from Google Calendar">Sync Google Calendar</button>
+        </div>
       </form>
       <ul id="calendar-list" class="bin-list"></ul>
     </aside>
@@ -469,6 +527,7 @@
           <button type="button" id="btn-paste-client-id" class="btn btn-small">Paste ID</button>
           <button type="submit" class="btn btn-small">Save Client ID</button>
           <button type="button" id="btn-drive-signin" class="btn btn-primary btn-small">Sign in with Google</button>
+          <button type="button" id="btn-drive-signin-redirect" class="btn btn-small" title="Firefox-safe same-tab sign-in">Sign in (Redirect)</button>
           <button type="button" id="btn-drive-sync-now" class="btn btn-small">Backup Snapshot Now</button>
         </div>
       </form>
@@ -521,6 +580,39 @@
       <button type="button" class="mob-btn" data-mob="games">Games</button>
       <button type="button" class="mob-btn" data-mob="sync">Sync</button>
     </nav>
+
+    <!-- Centered Floating Card: Fleeting Desk-Mat Scratchpad -->
+    <aside id="scratchpad-card" class="side-panel center-card hidden" aria-label="Fleeting Scratchpad">
+      <div class="panel-header">
+        <div>
+          <h2>Desk-Mat Scratchpad</h2>
+          <p class="panel-sub">Temporary jot — clears after this session unless promoted to a note</p>
+        </div>
+        <button type="button" id="btn-close-scratchpad" class="btn btn-small" title="Close">✕</button>
+      </div>
+      <textarea id="scratchpad-text" rows="5" placeholder="Jot a quick number, thought, or calculation…" style="width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface-input);color:var(--ink);font-family:inherit;font-size:13px;outline:none;resize:vertical"></textarea>
+      <div style="display:flex;justify-content:space-between;gap:6px">
+        <button type="button" id="btn-scratch-clear" class="btn btn-small">Clear</button>
+        <button type="button" id="btn-scratch-promote" class="btn btn-primary btn-small">Promote to Note</button>
+      </div>
+    </aside>
+
+    <!-- Quick Jump Palette (Ctrl+K) -->
+    <div id="quick-jump-modal" class="journal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Quick Jump">
+      <div class="quick-jump-box">
+        <input id="quick-jump-input" type="text" placeholder="Jump to note, binder, game, or action… (Esc to close)" autocomplete="off" />
+        <ul id="quick-jump-list" class="quick-jump-list"></ul>
+      </div>
+    </div>
+
+    <!-- Right-Click Context Menu for Corkboard Notes -->
+    <div id="cork-context-menu" class="popover menu-list cork-context-menu hidden" role="menu">
+      <button type="button" class="menu-item" data-ctx="open">Open</button>
+      <button type="button" class="menu-item" data-ctx="pin">Pin / Unpin</button>
+      <button type="button" class="menu-item" data-ctx="link">Link Note</button>
+      <button type="button" class="menu-item" data-ctx="bin">→ Bin</button>
+      <button type="button" class="menu-item danger" data-ctx="archive">Archive</button>
+    </div>
 
     <!-- Link banner & Toast -->
     <div id="link-banner" class="link-banner hidden">

@@ -2,7 +2,7 @@
   const SYNC_CFG_KEY = "antigravity_thought_desk_sync_cfg_v1";
   const LOCAL_SNAP_KEY = "antigravity_thought_desk_local_snaps_v1";
   const ROOT_FOLDER_NAME = "App Sync & Backups";
-  const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+  const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.readonly";
 
   // Strictly ignored OS metadata files
   const JUNK_PATTERNS = [/^\.DS_Store$/i, /^\._/, /^Thumbs\.db$/i, /^desktop\.ini$/i];
@@ -111,6 +111,35 @@
       });
     if (window.google?.accounts?.oauth2) return startTokenFlow();
     return loadGisScript().then(startTokenFlow);
+  }
+
+  function signInRedirect() {
+    if (!cfg.clientId) throw new Error("Enter your Google OAuth Client ID first.");
+    const redirectUri = location.origin + location.pathname;
+    const url = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
+      client_id: cfg.clientId,
+      redirect_uri: redirectUri,
+      response_type: "token",
+      scope: DRIVE_SCOPE,
+      include_granted_scopes: "true",
+      prompt: "consent",
+      ...(cfg.emailHint ? { login_hint: cfg.emailHint } : {}),
+    }).toString();
+    location.assign(url);
+  }
+
+  // Parse OAuth redirect token from URL hash on boot (Firefox-proof fallback)
+  let signedInViaRedirect = false;
+  if (typeof window !== "undefined" && window.location.hash.includes("access_token=")) {
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    const tok = hashParams.get("access_token");
+    const exp = Number(hashParams.get("expires_in") || 3600);
+    if (tok) {
+      accessToken = tok;
+      tokenExpiresAt = Date.now() + exp * 1000 - 60000;
+      signedInViaRedirect = true;
+      try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {}
+    }
   }
 
   function isSignedIn() {
@@ -321,6 +350,21 @@
     }, 3500);
   }
 
+  async function fetchCalendarEvents(daysAhead = 14) {
+    if (!isSignedIn()) throw new Error("Sign in to Google first.");
+    const timeMin = new Date().toISOString();
+    const timeMax = new Date(Date.now() + daysAhead * 86400000).toISOString();
+    const data = await driveFetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=25`
+    );
+    return (data.items || []).map((ev) => ({
+      id: "gcal_" + ev.id,
+      title: ev.summary || "(Untitled Event)",
+      date: (ev.start?.date || ev.start?.dateTime || "").slice(0, 10),
+      time: ev.start?.dateTime ? ev.start.dateTime.slice(11, 16) : "",
+    })).filter((ev) => ev.date);
+  }
+
   // Preload Google Identity Services on http/https so mobile browsers keep Sign-In inside the synchronous tap gesture
   if (typeof document !== "undefined" && (location.protocol === "https:" || location.protocol === "http:")) {
     loadGisScript().catch(() => {});
@@ -331,10 +375,13 @@
     setClientId: (id) => { cfg.clientId = String(id || "").trim(); saveCfg(); },
     setAutoSync: (val) => { cfg.autoSync = Boolean(val); saveCfg(); },
     isSignedIn,
+    didRedirectSignIn: () => signedInViaRedirect,
     signIn,
+    signInRedirect,
     syncNow,
     pullLiveFromDrive,
     exportToGoogleDoc,
+    fetchCalendarEvents,
     scheduleAutoSync,
     loadLocalSnapshots,
     listDriveSnapshots,
