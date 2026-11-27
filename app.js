@@ -1831,7 +1831,7 @@
     if (!navigator.getGamepads) return;
     let rafId = 0;
     let lastPress = {};
-    const hotspots = () => ["hotspot-lamp", "hotspot-calendar", "hotspot-journal", "hotspot-mug", "hotspot-mail", "btn-bin-toggle"]
+    const hotspots = () => ["hotspot-lamp", "btn-calendar-toggle", "hotspot-journal", "hotspot-mug", "hotspot-mail", "btn-bin-toggle"]
       .map((id) => document.getElementById(id)).filter(Boolean);
     function poll() {
       const pads = navigator.getGamepads ? navigator.getGamepads() : [];
