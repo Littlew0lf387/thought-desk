@@ -500,14 +500,39 @@
 
   function findBestDeskMatch(binnedNote) {
     let best = null, bestScore = 0;
-    for (const n of activeNotes()) {
+    for (const n of notes.filter((x) => !x.archived)) {
       const ta = extractTokens(binnedNote), tb = extractTokens(n);
       let overlap = 0;
       ta.tags.forEach((t) => { if (tb.tags.has(t)) overlap += 3; });
       ta.words.forEach((w) => { if (tb.words.has(w)) overlap += 1.2; });
       if (overlap > bestScore) { bestScore = overlap; best = n; }
     }
-    return bestScore >= 2.2 ? { note: best, score: bestScore } : null;
+    return bestScore >= 2.2 ? { note: best, score: bestScore, space: best.space } : null;
+  }
+
+  function suggestShelfAndBinder(item) {
+    const match = findBestDeskMatch(item);
+    const text = `${item.title || ""} ${item.body || ""} ${(item.tags || []).join(" ")}`.toLowerCase();
+    let targetSpace = match ? match.space : null;
+    if (!targetSpace) {
+      for (const sp of spaces) {
+        if (sp !== "Main Study" && text.includes(sp.toLowerCase())) { targetSpace = sp; break; }
+      }
+    }
+    let targetCategory = match ? match.note.category : (item.category || "Idea");
+    let clsConfident = false;
+    if (window.ThoughtDeskPlugins && typeof window.ThoughtDeskPlugins.classifyThought === "function") {
+      const cls = window.ThoughtDeskPlugins.classifyThought(`${item.title || ""} ${item.body || ""}`);
+      if (cls.confident) { targetCategory = cls.category; clsConfident = true; }
+      if (!targetSpace && cls.category === "Project" && spaces.includes("Projects")) targetSpace = "Projects";
+      if (!targetSpace && cls.category === "Personal" && spaces.includes("Personal")) targetSpace = "Personal";
+    }
+    return {
+      space: targetSpace || activeSpace,
+      category: targetCategory,
+      matchNote: match ? match.note : null,
+      confident: Boolean(match || targetSpace || clsConfident),
+    };
   }
 
   function noteMatchesFilter(note) {
@@ -569,7 +594,9 @@
     // 1. Top Shelf: Dynamic Scrollable Binders (with auto-sort)
     shelfSpacesEl.innerHTML = "";
     const binderStats = getAllBinderNames().map((name) => {
-      const items = spaceNotes.filter((n) => n.category === name);
+      const items = name === "Journal"
+        ? notes.filter((n) => !n.archived && n.category === "Journal")
+        : spaceNotes.filter((n) => n.category === name);
       const latest = items.reduce((mx, n) => Math.max(mx, n.updatedAt || n.createdAt || 0), 0);
       return { name, count: items.length, latest };
     });
@@ -714,7 +741,7 @@
   function openShelfBinder(category) {
     closeAllPopovers();
     closeRightDrawers();
-    shelfDrawerTitle.textContent = `${category} Binder (${activeSpace})`;
+    shelfDrawerTitle.textContent = category === "Journal" ? "Journal Binder (All Shelves)" : `${category} Binder (${activeSpace})`;
     shelfDrawerList.innerHTML = "";
     const colorBar = document.createElement("li");
     colorBar.className = "binder-color-bar";
@@ -753,8 +780,9 @@
       colorBar.appendChild(delBtn);
     }
     shelfDrawerList.appendChild(colorBar);
-    const list = activeNotes()
-      .filter((n) => n.category === category)
+    const list = (category === "Journal"
+      ? notes.filter((n) => !n.archived && n.category === "Journal")
+      : activeNotes().filter((n) => n.category === category))
       .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.updatedAt || 0) - (a.updatedAt || 0));
 
     if (list.length === 0) {
@@ -1247,6 +1275,7 @@
     gamesPanel.classList.add("hidden");
     if (typeof shelfDrawer !== "undefined" && shelfDrawer) shelfDrawer.classList.add("hidden");
     document.getElementById("scratchpad-card")?.classList.add("hidden");
+    document.getElementById("wolf-panel")?.classList.add("hidden");
     const calP = document.getElementById("calendar-panel");
     const mailP = document.getElementById("mail-panel");
     const syncP = document.getElementById("sync-panel");
@@ -1336,21 +1365,23 @@
     saveState();
   }
 
-  function placeBinItemOnDesk(binId, attachToNoteId = null) {
+  function placeBinItemOnDesk(binId, attachToNoteId = null, targetSpace = null, targetCategory = null, openAfter = true) {
     const idx = binNotes.findIndex((b) => b.id === binId);
-    if (idx === -1) return;
+    if (idx === -1) return null;
     const [item] = binNotes.splice(idx, 1);
     const id = "n_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const anchor = attachToNoteId ? notes.find((n) => n.id === attachToNoteId) : null;
+    const destSpace = targetSpace || (anchor ? anchor.space : activeSpace);
+    const destCat = targetCategory || (anchor ? anchor.category : item.category || "Idea");
     const newNote = {
       id,
       title: item.title,
       body: item.body || "",
-      category: anchor ? anchor.category : item.category || "Idea",
+      category: destCat,
       tags: item.tags || [],
       links: anchor ? [anchor.id] : [],
       pinned: false,
-      space: activeSpace,
+      space: destSpace,
       archived: false,
       boardX: findFreeCorkSpot().x,
       boardY: findFreeCorkSpot().y,
@@ -1361,7 +1392,8 @@
     if (anchor) { anchor.links = anchor.links || []; anchor.links.push(id); }
     notes.push(newNote);
     saveState();
-    openEditor(id);
+    if (openAfter && destSpace === activeSpace) openEditor(id);
+    return newNote;
   }
 
   function renderLinksAndSuggestions(note) {
@@ -1491,34 +1523,50 @@
       autoSortBinBtn.disabled = true;
       const empty = document.createElement("li");
       empty.className = "bin-item"; empty.style.color = "var(--ink-muted)"; empty.style.fontSize = "12px";
-      empty.textContent = "Toss quick thoughts here, or drag any corkboard note onto the 🧺 Basket on the desk.";
+      empty.textContent = "Park someday ideas here, or drag any note onto the Basket to triage across shelves.";
       binList.appendChild(empty);
       return;
     }
+    const allBinders = getAllBinderNames();
     for (const item of binNotes) {
-      const match = findBestDeskMatch(item);
-      if (match) matchCount++;
+      const sug = suggestShelfAndBinder(item);
+      if (sug.confident) matchCount++;
       const li = document.createElement("li");
       li.className = "bin-item";
+      const hintText = sug.matchNote
+        ? `Fits with: <strong>${escapeHtml(sug.matchNote.title)}</strong> (${escapeHtml(sug.space)})`
+        : (sug.confident ? `Suggested: <strong>${escapeHtml(sug.space)} → ${escapeHtml(sug.category)}</strong>` : "Someday holding");
+      const spaceOpts = spaces.map((sp) => `<option value="${escapeHtml(sp)}" ${sp === sug.space ? "selected" : ""}>${escapeHtml(sp)}</option>`).join("");
+      const binderOpts = allBinders.map((b) => `<option value="${escapeHtml(b)}" ${b === sug.category ? "selected" : ""}>${escapeHtml(b)}</option>`).join("");
       li.innerHTML = `
         <div class="bin-item-head">
           <span class="bin-item-title">${escapeHtml(item.title)}</span>
           <button type="button" class="btn-ghost-xs js-bin-del" title="Discard">✕</button>
         </div>
         ${item.body ? `<div style="font-size:11.5px;color:var(--ink-soft)">${escapeHtml(item.body.slice(0, 80))}${item.body.length > 80 ? "…" : ""}</div>` : ""}
-        ${match ? `<div class="bin-match-hint">Fits with: <strong>${escapeHtml(match.note.title)}</strong></div>` : ""}
-        <div class="bin-item-actions">
-          ${match ? `<button type="button" class="btn btn-primary btn-small js-bin-attach">Auto-Attach</button>` : ""}
-          <button type="button" class="btn btn-small js-bin-place">Pin to Board</button>
+        <div class="bin-match-hint">${hintText}</div>
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:4px">
+          <select class="shelf-mini-select js-bin-space" aria-label="Target Shelf">${spaceOpts}</select>
+          <select class="shelf-mini-select js-bin-cat" aria-label="Target Binder">${binderOpts}</select>
+          <button type="button" class="btn btn-small js-bin-move">Move</button>
+          ${sug.confident ? `<button type="button" class="btn btn-primary btn-small js-bin-auto">${sug.matchNote ? "Attach" : `→ ${escapeHtml(sug.space)}`}</button>` : ""}
         </div>
       `;
       li.querySelector(".js-bin-del").addEventListener("click", () => { binNotes = binNotes.filter((b) => b.id !== item.id); saveState(); });
-      if (match) li.querySelector(".js-bin-attach").addEventListener("click", () => placeBinItemOnDesk(item.id, match.note.id));
-      li.querySelector(".js-bin-place").addEventListener("click", () => placeBinItemOnDesk(item.id, null));
+      li.querySelector(".js-bin-move").addEventListener("click", () => {
+        const sp = li.querySelector(".js-bin-space").value;
+        const cat = li.querySelector(".js-bin-cat").value;
+        placeBinItemOnDesk(item.id, null, sp, cat, sp === activeSpace);
+        showToast(`Moved to ${sp} (${cat})`);
+      });
+      li.querySelector(".js-bin-auto")?.addEventListener("click", () => {
+        placeBinItemOnDesk(item.id, sug.matchNote ? sug.matchNote.id : null, sug.space, sug.category, sug.space === activeSpace);
+        showToast(`Routed to ${sug.space} → ${sug.category}`);
+      });
       binList.appendChild(li);
     }
-    binMatchSummary.textContent = matchCount > 0 ? `${matchCount} match${matchCount === 1 ? "" : "es"} · ${binNotes.length} total` : `${binNotes.length} ready to auto-sort`;
-    autoSortBinBtn.disabled = binNotes.length === 0;
+    binMatchSummary.textContent = matchCount > 0 ? `${matchCount} ready to auto-route · ${binNotes.length} total` : `${binNotes.length} parked in Someday`;
+    autoSortBinBtn.disabled = matchCount === 0;
   }
 
   function renderRecall() {
@@ -1674,17 +1722,19 @@
   autoSortBinBtn.addEventListener("click", () => {
     const items = [...binNotes];
     let sortedCount = 0;
+    const touchedShelves = new Set();
     for (const item of items) {
-      const match = findBestDeskMatch(item);
-      if (window.ThoughtDeskPlugins && typeof window.ThoughtDeskPlugins.classifyThought === "function") {
-        const cls = window.ThoughtDeskPlugins.classifyThought(`${item.title || ""} ${item.body || ""}`);
-        if (cls.confident) item.category = cls.category;
-        item.tags = [...new Set([...(item.tags || []), ...cls.tags])];
-      }
-      placeBinItemOnDesk(item.id, match ? match.note.id : null);
+      const sug = suggestShelfAndBinder(item);
+      if (!sug.confident && !sug.matchNote) continue;
+      placeBinItemOnDesk(item.id, sug.matchNote ? sug.matchNote.id : null, sug.space, sug.category, false);
+      touchedShelves.add(sug.space);
       sortedCount++;
     }
-    if (sortedCount > 0) showToast(`Auto-sorted ${sortedCount} thought${sortedCount === 1 ? "" : "s"} into your study`);
+    if (sortedCount > 0) {
+      showToast(`Auto-sorted ${sortedCount} item${sortedCount === 1 ? "" : "s"} across ${touchedShelves.size} shelf${touchedShelves.size === 1 ? "" : "s"}`);
+    } else {
+      showToast("No confident matches — items kept in Someday basket");
+    }
   });
 
   // Quick Auto-Sort Jot Bar (top-left)
@@ -1978,7 +2028,8 @@
 
   // Keyboard & Steam Deck / Gamepad shortcuts
   window.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+    const k = e.key.toLowerCase();
+    if (((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && k === "k") || (e.altKey && !e.ctrlKey && !e.metaKey && k === "k")) {
       e.preventDefault();
       e.stopPropagation();
       toggleQuickJump();
@@ -1992,12 +2043,12 @@
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const k = e.key.toLowerCase();
     if (e.key === "Escape") {
       closeAllPopovers(); exitLinkMode(); closeQuickJump(); closeCorkContextMenu();
       if (!journalModal.classList.contains("hidden")) { journalModal.classList.add("hidden"); return; }
       closeRightDrawers(); renderRecall();
     } else if (k === "j") { e.preventDefault(); openJournalSpread(); }
+    else if (k === "k") { e.preventDefault(); toggleQuickJump(true); }
     else if (k === "n") { e.preventDefault(); document.getElementById("btn-new").click(); }
     else if (k === "g") { e.preventDefault(); gamesToggleBtn.click(); }
     else if (k === "b") { e.preventDefault(); binToggleBtn.click(); }
@@ -2514,7 +2565,9 @@
     bindersGrid.innerHTML = "";
     const spaceNotes = activeNotes();
     for (const bName of getAllBinderNames()) {
-      const count = spaceNotes.filter((n) => n.category === bName).length;
+      const count = (bName === "Journal"
+        ? notes.filter((n) => !n.archived && n.category === "Journal")
+        : spaceNotes.filter((n) => n.category === bName)).length;
       const card = document.createElement("button");
       card.type = "button";
       card.className = "mob-binder-card";
@@ -2535,7 +2588,9 @@
   document.querySelectorAll("[data-mob-action]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const act = btn.dataset.mobAction;
-      if (act === "theme") document.getElementById("hotspot-lamp")?.click();
+      if (act === "wolf") openWolfAssistant();
+      else if (act === "scratch") document.getElementById("hotspot-deskmat")?.click();
+      else if (act === "theme") document.getElementById("hotspot-lamp")?.click();
       else if (act === "focus") document.getElementById("hotspot-mug")?.click();
       else if (act === "mail") document.getElementById("hotspot-mail")?.click();
       else if (act === "reminders") document.getElementById("btn-calendar-toggle")?.click();
@@ -2629,10 +2684,124 @@
     openJournalSpread();
     showToast("Fox check-in: take a quiet minute to jot a thought");
   });
-  document.getElementById("hotspot-wolf")?.addEventListener("click", () => {
-    const activeCount = activeNotes().length;
-    const playingCount = games.filter((g) => g.status === "playing").length;
-    showToast(`Wolf Den: ${activeCount} notes · ${playingCount}/${MAX_ACTIVE_GAMES} games · ${calEvents.length} reminders`);
+  // ── Wolf Study Assistant (Local Heuristics + Optional BYO Gemini Key) ────
+  const WOLF_KEY = "antigravity_thought_desk_wolf_key_v1";
+  const wolfPanel = document.getElementById("wolf-panel");
+  const wolfStatusBox = document.getElementById("wolf-status-box");
+  const wolfReplyBox = document.getElementById("wolf-reply-box");
+  const wolfApiKeyInput = document.getElementById("wolf-api-key");
+  if (wolfApiKeyInput) wolfApiKeyInput.value = localStorage.getItem(WOLF_KEY) || "";
+
+  function openWolfAssistant() {
+    closeAllPopovers();
+    closeRightDrawers();
+    const spaceNotes = activeNotes();
+    const openChecks = spaceNotes.reduce((acc, n) => acc + (String(n.body || "").match(/-\s*\[ \]/g) || []).length, 0);
+    const playing = games.filter((g) => g.status === "playing").length;
+    if (wolfStatusBox) {
+      wolfStatusBox.innerHTML = `<strong>Wolf Den (${escapeHtml(activeSpace)})</strong> · ${spaceNotes.length} notes · ${openChecks} open checklist items · ${binNotes.length} in Basket · ${playing}/${MAX_ACTIVE_GAMES} games`;
+    }
+    wolfPanel?.classList.remove("hidden");
+  }
+
+  function showWolfReply(text) {
+    if (!wolfReplyBox) return;
+    wolfReplyBox.textContent = text;
+    wolfReplyBox.classList.remove("hidden");
+  }
+
+  document.getElementById("hotspot-wolf")?.addEventListener("click", openWolfAssistant);
+  document.getElementById("btn-close-wolf")?.addEventListener("click", () => wolfPanel?.classList.add("hidden"));
+
+  document.getElementById("btn-wolf-next")?.addEventListener("click", () => {
+    const todo = activeNotes().find((n) => /-\s*\[ \]/i.test(String(n.body || "")));
+    const upcoming = [...calEvents].sort((a, b) => a.date.localeCompare(b.date))[0];
+    const parts = [];
+    if (upcoming) parts.push(`Upcoming reminder: "${upcoming.title}" on ${upcoming.date}${upcoming.time ? " at " + upcoming.time : ""}.`);
+    if (todo) {
+      const firstCheck = (String(todo.body || "").match(/-\s*\[ \]\s*(.+)/i) || [])[1] || todo.title;
+      parts.push(`Next open checklist item in "${todo.title}": ${firstCheck.trim()}.`);
+    }
+    if (binNotes.length > 0) parts.push(`You have ${binNotes.length} item(s) parked in the Thought Bin ready to triage.`);
+    if (parts.length === 0) parts.push("Your desk is clear! Try opening your Journal for a quiet reflection or picking a game from Rotation.");
+    showWolfReply(parts.join("\n\n"));
+  });
+
+  document.getElementById("btn-wolf-links")?.addEventListener("click", () => {
+    const list = activeNotes();
+    const pairs = [];
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i], b = list[j];
+        if ((a.links || []).includes(b.id)) continue;
+        const score = noteSimilarity(a, b);
+        if (score >= 2.2) pairs.push({ a, b, score });
+      }
+    }
+    pairs.sort((x, y) => y.score - x.score);
+    if (pairs.length === 0) {
+      showWolfReply("No unlinked note pairs found on this shelf right now.");
+      return;
+    }
+    const top = pairs.slice(0, 4).map((p) => `• "${p.a.title}" ↔ "${p.b.title}"`).join("\n");
+    showWolfReply(`Suggested yarn connections:\n${top}\n\n(Tip: Open Automations → Auto-Link Related Notes to connect them in 1 click.)`);
+  });
+
+  document.getElementById("btn-wolf-digest")?.addEventListener("click", () => {
+    const spaceNotes = activeNotes();
+    const pinned = spaceNotes.filter((n) => n.pinned).map((n) => n.title);
+    const playing = games.filter((g) => g.status === "playing").map((g) => g.title);
+    const journals = notes.filter((n) => !n.archived && n.category === "Journal");
+    showWolfReply(
+      `Study Summary (${activeSpace}):\n` +
+      `• Pinned on Corkboard (${pinned.length}): ${pinned.slice(0, 5).join(", ") || "None"}\n` +
+      `• Active Games (${playing.length}/${MAX_ACTIVE_GAMES}): ${playing.join(", ") || "None"}\n` +
+      `• Journal Entries (All Shelves): ${journals.length}\n` +
+      `• Thought Bin: ${binNotes.length} parked`
+    );
+  });
+
+  document.getElementById("wolf-key-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const k = (wolfApiKeyInput?.value || "").trim();
+    if (k) localStorage.setItem(WOLF_KEY, k);
+    else localStorage.removeItem(WOLF_KEY);
+    showToast(k ? "Saved Gemini key locally for Wolf Assistant" : "Cleared Gemini key (using local mode)");
+  });
+
+  document.getElementById("wolf-ask-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = document.getElementById("wolf-ask-input");
+    const q = (input?.value || "").trim();
+    if (!q) return;
+    const apiKey = localStorage.getItem(WOLF_KEY) || "";
+    if (apiKey) {
+      showWolfReply("Thinking…");
+      try {
+        const context = `Space: ${activeSpace}\nNotes: ${activeNotes().slice(0, 15).map((n) => `[${n.category}] ${n.title}: ${(n.body || "").slice(0, 100)}`).join(" | ")}\nGames: ${games.filter((g) => g.status === "playing").map((g) => g.title).join(", ")}\nReminders: ${calEvents.map((c) => `${c.date} ${c.title}`).join(", ")}`;
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts: [{ text: `You are the calm, concise Wolf Study Assistant in a cozy study app. Answer in 2-4 short sentences using this study context:\n${context}\n\nQuestion: ${q}` }] }] }),
+        });
+        const data = await res.json();
+        const ans = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (ans) { showWolfReply(ans.trim()); return; }
+      } catch (_) {}
+    }
+    const ql = q.toLowerCase();
+    if (ql.includes("game") || ql.includes("play")) {
+      const playing = games.filter((g) => g.status === "playing").map((g) => g.title);
+      const backlog = games.filter((g) => g.status === "backlog").slice(0, 4).map((g) => g.title);
+      showWolfReply(`Now Playing: ${playing.join(", ") || "None"}\nBacklog picks: ${backlog.join(", ") || "None"}`);
+    } else if (ql.includes("todo") || ql.includes("task") || ql.includes("due")) {
+      document.getElementById("btn-wolf-next")?.click();
+    } else {
+      const hits = notes.filter((n) => !n.archived && `${n.title} ${n.body || ""} ${(n.tags || []).join(" ")}`.toLowerCase().includes(ql)).slice(0, 5);
+      showWolfReply(hits.length
+        ? `Matching notes (${hits.length}):\n` + hits.map((h) => `• [${h.space} / ${h.category}] ${h.title}`).join("\n")
+        : `No notes matched "${q}". Try "Suggest Next Step", "Summarize Study", or add an optional Gemini API key below.`);
+    }
   });
 
   // ── Note Photo/File Attachments & Fleeting Desk-Mat Scratchpad ────────────
@@ -2750,18 +2919,24 @@
   const quickJumpInput = document.getElementById("quick-jump-input");
   const quickJumpList = document.getElementById("quick-jump-list");
   let quickJumpItems = [];
+  let dropInitialK = false;
 
   function closeQuickJump() {
     quickJumpModal?.classList.add("hidden");
+    dropInitialK = false;
   }
-  function toggleQuickJump() {
+  function toggleQuickJump(fromKeyK = false) {
     if (!quickJumpModal) return;
     const opening = quickJumpModal.classList.contains("hidden");
     closeAllPopovers();
     closeCorkContextMenu();
     if (opening) {
+      dropInitialK = Boolean(fromKeyK);
       quickJumpModal.classList.remove("hidden");
-      if (quickJumpInput) { quickJumpInput.value = ""; quickJumpInput.focus(); }
+      if (quickJumpInput) {
+        quickJumpInput.value = "";
+        quickJumpInput.focus();
+      }
       renderQuickJump("");
     } else {
       closeQuickJump();
@@ -2800,7 +2975,13 @@
       quickJumpList.appendChild(li);
     });
   }
-  quickJumpInput?.addEventListener("input", () => renderQuickJump(quickJumpInput.value));
+  quickJumpInput?.addEventListener("input", () => {
+    if (dropInitialK) {
+      dropInitialK = false;
+      if (quickJumpInput.value.toLowerCase() === "k") quickJumpInput.value = "";
+    }
+    renderQuickJump(quickJumpInput.value);
+  });
   quickJumpInput?.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && quickJumpItems.length > 0) {
       e.preventDefault();

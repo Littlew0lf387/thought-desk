@@ -158,7 +158,7 @@
         <div id="help-popover" class="popover help-popover hidden">
           <div class="popover-title">Study &amp; Shortcut Guide</div>
           <ul class="help-list">
-            <li><strong>Journal / Note</strong> — <code>J</code> Daily Journal, <code>N</code> New Note, <code>/</code> Search</li>
+            <li><strong>Journal / Note</strong> — <code>J</code> Daily Journal, <code>N</code> New Note, <code>K</code> / <code>Alt+K</code> Quick Jump, <code>/</code> Search</li>
             <li><strong>Drawers</strong> — <code>G</code> Games, <code>B</code> Thought Bin, <code>O</code> Archive, <code>M</code> Mail, <code>R</code> Reminders, <code>P</code> Plugins</li>
             <li><strong>Desk Props</strong> — <code>T</code> Lamp Theme, <code>F</code> 25m Focus Mug, <code>?</code> Help, <code>Esc</code> Close</li>
             <li><strong>Steam Deck / Gamepad</strong> — D-Pad cycles desk props, <code>A</code> activates, <code>B</code> closes, <code>X</code> Journal, <code>Y</code> Help</li>
@@ -299,7 +299,7 @@
       <div class="panel-header">
         <div>
           <h2>Thought Bin</h2>
-          <p class="panel-sub">Toss quick thoughts in the basket — sort or attach later</p>
+          <p class="panel-sub">Someday holding &amp; smart triage across all shelves</p>
         </div>
         <button type="button" id="btn-close-bin" class="btn btn-small" title="Close Bin">✕</button>
       </div>
@@ -552,6 +552,8 @@
     <!-- Mobile Dashboard Overlay (shown on phones <= 768px, leaves desktop untouched) -->
     <section id="mobile-dashboard" class="mobile-dashboard" aria-label="Mobile Study Dashboard">
       <div class="mob-desk-strip">
+        <button type="button" class="mob-chip" data-mob-action="wolf">Wolf</button>
+        <button type="button" class="mob-chip" data-mob-action="scratch">Scratch</button>
         <button type="button" class="mob-chip" data-mob-action="theme">Lamp Theme</button>
         <button type="button" class="mob-chip" data-mob-action="focus">25m Focus</button>
         <button type="button" class="mob-chip" data-mob-action="mail">Mail</button>
@@ -613,6 +615,37 @@
       <button type="button" class="menu-item" data-ctx="bin">→ Bin</button>
       <button type="button" class="menu-item danger" data-ctx="archive">Archive</button>
     </div>
+
+    <!-- Centered Floating Card: Wolf Study Assistant -->
+    <aside id="wolf-panel" class="side-panel center-card hidden" aria-label="Wolf Study Assistant">
+      <div class="panel-header">
+        <div>
+          <h2>Wolf Study Assistant</h2>
+          <p class="panel-sub">Calm local helper for triage, links &amp; next steps (optional BYO Gemini key)</p>
+        </div>
+        <button type="button" id="btn-close-wolf" class="btn btn-small" title="Close">✕</button>
+      </div>
+      <div id="wolf-status-box" class="rotation-meter"></div>
+      <div class="plugin-quick-actions">
+        <button type="button" id="btn-wolf-next" class="btn btn-primary btn-small">Suggest Next Step</button>
+        <button type="button" id="btn-wolf-links" class="btn btn-small">Find Connections</button>
+        <button type="button" id="btn-wolf-digest" class="btn btn-small">Summarize Study</button>
+      </div>
+      <form id="wolf-ask-form" class="bin-quick-form">
+        <input id="wolf-ask-input" type="text" placeholder="Ask the Wolf (e.g. 'open todos', 'what to play?')…" autocomplete="off" />
+        <button type="submit" class="btn btn-primary btn-small">Ask</button>
+      </form>
+      <div id="wolf-reply-box" class="rotation-meter hidden" style="white-space:pre-wrap;line-height:1.45;max-height:180px;overflow-y:auto"></div>
+      <details style="font-size:11px;color:var(--ink-muted)">
+        <summary style="cursor:pointer">Optional: BYO Gemini API Key (stored locally only)</summary>
+        <form id="wolf-key-form" class="rule-form" style="margin-top:6px">
+          <div style="display:flex;gap:6px">
+            <input id="wolf-api-key" type="password" placeholder="Paste Gemini API key (optional)…" autocomplete="off" style="flex:1" />
+            <button type="submit" class="btn btn-small">Save Key</button>
+          </div>
+        </form>
+      </details>
+    </aside>
 
     <!-- Link banner & Toast -->
     <div id="link-banner" class="link-banner hidden">
