@@ -617,6 +617,21 @@ html[data-theme="soft-day"] .room-mood-overlay {
   z-index: 25;
 }
 
+/* Wallpaper Engine / Zen Mode: gently fade corner bars until hovered */
+html[data-zen="true"] .corner-top-left,
+html[data-zen="true"] .corner-top-right,
+html[data-zen="true"] .bottom-left {
+  opacity: 0.08;
+  transition: opacity 0.28s ease;
+}
+html[data-zen="true"] .corner-top-left:hover,
+html[data-zen="true"] .corner-top-left:focus-within,
+html[data-zen="true"] .corner-top-right:hover,
+html[data-zen="true"] .corner-top-right:focus-within,
+html[data-zen="true"] .bottom-left:hover {
+  opacity: 1;
+}
+
 .mini-pill {
   display: inline-flex;
   align-items: center;
@@ -1088,7 +1103,8 @@ html[data-theme="soft-day"] .room-mood-overlay {
 }
 
 /* ── Mobile Responsive PWA Layout (<= 768px) ─────── */
-.mobile-nav { display: none; }
+.mobile-nav,
+.mobile-dashboard { display: none; }
 
 @media (hover: none), (pointer: coarse) {
   .hotspot-tag { opacity: 0.88; }
@@ -1126,9 +1142,144 @@ html[data-theme="soft-day"] .room-mood-overlay {
 }
 
 @media (max-width: 768px) {
-  .quick-jot-form input { width: 145px; }
-  .quick-jot-form input:focus { width: 190px; }
-  .mini-search { width: 96px; }
+  .room-bg { filter: blur(4px) brightness(0.72); transform: scale(1.04); }
+  .room-hotspot,
+  .shelf-header-bar,
+  .shelf-zone,
+  .corkboard-zone,
+  .bottom-left,
+  .recall-card { display: none !important; }
+  .corner-top-right { display: none !important; }
+  .corner-top-left {
+    top: 8px; left: 8px; right: 8px;
+    gap: 6px;
+  }
+  .quick-jot-form { flex: 1; min-width: 0; }
+  .quick-jot-form input { width: 100%; }
+  .quick-jot-form input:focus { width: 100%; }
+  .mini-search { width: 92px; }
+
+  .mobile-dashboard {
+    position: fixed;
+    top: 46px;
+    left: 0;
+    right: 0;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px 12px 14px;
+    overflow-y: auto;
+    z-index: 18;
+  }
+  .mob-desk-strip,
+  .mob-spaces-row {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-shrink: 0;
+    padding-bottom: 2px;
+  }
+  .mob-desk-strip::-webkit-scrollbar,
+  .mob-spaces-row::-webkit-scrollbar { display: none; }
+  .mob-chip {
+    appearance: none;
+    flex-shrink: 0;
+    padding: 6px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--paper-soft);
+    backdrop-filter: blur(10px);
+    color: var(--ink);
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .mob-chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .mob-view { display: flex; flex-direction: column; gap: 10px; }
+  .mob-notes-feed {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+  .mob-note-card {
+    text-align: left;
+    appearance: none;
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--cat-color, var(--accent));
+    border-radius: 14px;
+    padding: 11px 13px;
+    background: var(--paper-elevated);
+    color: var(--ink);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .mob-note-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--cat-color, var(--accent));
+  }
+  .mob-note-title { font-size: 14px; font-weight: 700; margin: 0; }
+  .mob-note-body {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .mob-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink);
+    padding: 0 2px;
+  }
+  .mob-binders-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 9px;
+  }
+  .mob-binder-card {
+    appearance: none;
+    border: 1px solid var(--line);
+    border-top: 4px solid var(--cat-color, var(--accent));
+    border-radius: 14px;
+    padding: 12px;
+    background: var(--paper-elevated);
+    color: var(--ink);
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .mob-binder-name { font-size: 13.5px; font-weight: 700; }
+  .mob-binder-count { font-size: 11px; color: var(--ink-muted); }
+  .mob-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
   .journal-book {
     grid-template-columns: 1fr;
     height: auto;

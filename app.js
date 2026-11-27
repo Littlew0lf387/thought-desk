@@ -285,6 +285,7 @@
     updateStats();
     renderShelves();
     renderCorkboard();
+    if (typeof renderMobileDashboard === "function") renderMobileDashboard();
     renderOutline();
     renderBin();
     renderGamesPanel();
@@ -2071,10 +2072,38 @@
     showToast("Added to Mail Tray");
   });
 
-  // ── PWA Service Worker, Google Drive Sync Panel & Mobile Nav ──────────────
-  if ("serviceWorker" in navigator) {
+  // ── PWA Service Worker (HTTP/HTTPS only, safe for Wallpaper Engine file://) ─
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "127.0.0.1" || location.hostname === "localhost")) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
+
+  // ── Wallpaper Engine & Zen Mode Support ───────────────────────────────────
+  const ZEN_KEY = "antigravity_thought_desk_zen_v1";
+  function setZenMode(enabled) {
+    if (enabled) document.documentElement.setAttribute("data-zen", "true");
+    else document.documentElement.removeAttribute("data-zen");
+    try { localStorage.setItem(ZEN_KEY, enabled ? "true" : "false"); } catch (_) {}
+  }
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get("wallpaper") === "1" || urlParams.get("zen") === "1" || localStorage.getItem(ZEN_KEY) === "true") {
+    setZenMode(true);
+  }
+  document.getElementById("btn-zen-mode")?.addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-zen") !== "true";
+    setZenMode(next);
+    closeAllPopovers();
+    showToast(next ? "Wallpaper Zen Mode on (hover top corners to show bars)" : "Wallpaper Zen Mode off");
+  });
+  window.wallpaperPropertyListener = {
+    applyUserProperties(props) {
+      if (props.zenmode !== undefined) setZenMode(Boolean(props.zenmode.value));
+      if (props.theme !== undefined) {
+        const wantDay = props.theme.value === "soft-day";
+        const isDay = document.documentElement.getAttribute("data-theme") === "soft-day";
+        if (wantDay !== isDay) document.getElementById("btn-theme-toggle")?.click();
+      }
+    },
+  };
 
   const syncPanel = document.getElementById("sync-panel");
   const syncStatusBox = document.getElementById("sync-status-box");
@@ -2145,6 +2174,18 @@
   document.getElementById("btn-close-sync").addEventListener("click", () => syncPanel.classList.add("hidden"));
   document.getElementById("btn-refresh-snaps").addEventListener("click", renderSyncPanel);
 
+  document.getElementById("btn-paste-client-id")?.addEventListener("click", async () => {
+    try {
+      const txt = (await navigator.clipboard.readText()).trim();
+      if (!txt) { showToast("Clipboard is empty"); return; }
+      syncClientIdInput.value = txt;
+      if (window.ThoughtDeskSync) window.ThoughtDeskSync.setClientId(txt);
+      showToast("Pasted & saved Client ID");
+    } catch (_) {
+      showToast("Clipboard blocked — enable Keyboard input in Lively Settings");
+    }
+  });
+
   document.getElementById("sync-config-form").addEventListener("submit", (e) => {
     e.preventDefault();
     if (window.ThoughtDeskSync) {
@@ -2206,14 +2247,101 @@
     e.target.value = "";
   });
 
+  // ── Mobile Dashboard Renderer (<= 768px) ─────────────────────────────────
+  let activeMobTab = "board";
+  function renderMobileDashboard() {
+    const spacesRow = document.getElementById("mob-spaces-row");
+    const notesFeed = document.getElementById("mob-notes-feed");
+    const bindersGrid = document.getElementById("mob-binders-grid");
+    const boardView = document.getElementById("mob-view-board");
+    const bindersView = document.getElementById("mob-view-binders");
+    if (!spacesRow || !notesFeed || !bindersGrid) return;
+
+    if (boardView) boardView.classList.toggle("hidden", activeMobTab !== "board");
+    if (bindersView) bindersView.classList.toggle("hidden", activeMobTab !== "binders");
+
+    spacesRow.innerHTML = "";
+    for (const sp of spaces) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `mob-chip ${sp === activeSpace ? "active" : ""}`;
+      btn.textContent = sp;
+      btn.addEventListener("click", () => {
+        activeSpace = sp;
+        selectedId = null; editingId = null;
+        saveState();
+      });
+      spacesRow.appendChild(btn);
+    }
+
+    notesFeed.innerHTML = "";
+    const corkNotes = activeNotes().filter((n) => noteMatchesFilter(n));
+    if (corkNotes.length === 0) {
+      notesFeed.innerHTML = `<div class="mob-note-card" style="opacity:0.75"><div class="mob-note-title">No notes in ${escapeHtml(activeSpace)} yet</div><p class="mob-note-body">Use Quick Jot above to capture a thought.</p></div>`;
+    } else {
+      for (const n of corkNotes) {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "mob-note-card";
+        card.style.setProperty("--cat-color", getBinderColor(n.category));
+        card.innerHTML = `
+          <div class="mob-note-meta"><span>${n.pinned ? "★ " : ""}${escapeHtml(n.category)}</span><span>${escapeHtml(formatAge(n.updatedAt || n.createdAt))}</span></div>
+          <div class="mob-note-title">${escapeHtml(n.title)}</div>
+          ${n.body ? `<p class="mob-note-body">${escapeHtml(String(n.body).trim())}</p>` : ""}
+        `;
+        card.addEventListener("click", () => openEditor(n.id));
+        notesFeed.appendChild(card);
+      }
+    }
+
+    bindersGrid.innerHTML = "";
+    const spaceNotes = activeNotes();
+    for (const bName of getAllBinderNames()) {
+      const count = spaceNotes.filter((n) => n.category === bName).length;
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "mob-binder-card";
+      card.style.setProperty("--cat-color", getBinderColor(bName));
+      card.innerHTML = `
+        <div class="mob-binder-name">${escapeHtml(bName)}</div>
+        <div class="mob-binder-count">${count} note${count === 1 ? "" : "s"}</div>
+      `;
+      card.addEventListener("click", () => openShelfBinder(bName));
+      bindersGrid.appendChild(card);
+    }
+  }
+
+  document.getElementById("mob-btn-new-binder")?.addEventListener("click", () => {
+    document.getElementById("btn-new-binder")?.click();
+  });
+
+  document.querySelectorAll("[data-mob-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const act = btn.dataset.mobAction;
+      if (act === "theme") document.getElementById("hotspot-lamp")?.click();
+      else if (act === "focus") document.getElementById("hotspot-mug")?.click();
+      else if (act === "mail") document.getElementById("hotspot-mail")?.click();
+      else if (act === "reminders") document.getElementById("btn-calendar-toggle")?.click();
+      else if (act === "bin") binToggleBtn.click();
+      else if (act === "outline") outlineToggleBtn.click();
+    });
+  });
+
   document.querySelectorAll(".mob-btn").forEach((b) => {
     b.addEventListener("click", () => {
       const tab = b.dataset.mob;
-      if (tab === "journal") openJournalSpread();
-      else if (tab === "binders") openShelfBinder("Learning");
-      else if (tab === "bin") binToggleBtn.click();
-      else if (tab === "games") openGamesPanel("playing");
-      else if (tab === "sync") document.getElementById("btn-sync-toggle").click();
+      document.querySelectorAll(".mob-btn").forEach((x) => x.classList.toggle("active", x === b));
+      if (tab === "board" || tab === "binders") {
+        activeMobTab = tab;
+        closeRightDrawers();
+        renderMobileDashboard();
+      } else if (tab === "journal") {
+        openJournalSpread();
+      } else if (tab === "games") {
+        openGamesPanel("playing");
+      } else if (tab === "sync") {
+        document.getElementById("btn-sync-toggle").click();
+      }
     });
   });
 
@@ -2224,6 +2352,7 @@
   updateStats();
   renderShelves();
   renderCorkboard();
+  renderMobileDashboard();
   renderOutline();
   renderBin();
   renderGamesPanel();

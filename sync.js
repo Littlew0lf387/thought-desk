@@ -86,23 +86,31 @@
     });
   }
 
-  async function signIn() {
-    if (!cfg.clientId) throw new Error("Enter your Google OAuth Client ID first.");
-    await loadGisScript();
-    return new Promise((resolve, reject) => {
-      tokenClient = window.google.accounts.oauth2.initTokenClient({
-        client_id: cfg.clientId,
-        scope: DRIVE_SCOPE,
-        ...(cfg.emailHint ? { hint: cfg.emailHint } : {}),
-        callback: (resp) => {
-          if (resp.error) { reject(new Error(resp.error)); return; }
-          accessToken = resp.access_token;
-          tokenExpiresAt = Date.now() + (resp.expires_in || 3600) * 1000 - 60000;
-          resolve(accessToken);
-        },
+  function signIn() {
+    if (!cfg.clientId) return Promise.reject(new Error("Enter your Google OAuth Client ID first."));
+    const startTokenFlow = () =>
+      new Promise((resolve, reject) => {
+        tokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: cfg.clientId,
+          scope: DRIVE_SCOPE,
+          ...(cfg.emailHint ? { hint: cfg.emailHint } : {}),
+          callback: (resp) => {
+            if (resp.error) { reject(new Error(resp.error)); return; }
+            accessToken = resp.access_token;
+            tokenExpiresAt = Date.now() + (resp.expires_in || 3600) * 1000 - 60000;
+            resolve(accessToken);
+          },
+          error_callback: (err) => {
+            const msg = err?.type === "popup_failed_to_open"
+              ? "Sign-in popup blocked. Allow popups for this site or open in your main browser."
+              : (err?.message || err?.type || "Google Sign-In failed");
+            reject(new Error(msg));
+          },
+        });
+        tokenClient.requestAccessToken({ prompt: accessToken ? "" : "consent" });
       });
-      tokenClient.requestAccessToken({ prompt: accessToken ? "" : "consent" });
-    });
+    if (window.google?.accounts?.oauth2) return startTokenFlow();
+    return loadGisScript().then(startTokenFlow);
   }
 
   function isSignedIn() {
@@ -311,6 +319,11 @@
         if (onStatus) onStatus("Local (Offline)");
       }
     }, 3500);
+  }
+
+  // Preload Google Identity Services on http/https so mobile browsers keep Sign-In inside the synchronous tap gesture
+  if (typeof document !== "undefined" && (location.protocol === "https:" || location.protocol === "http:")) {
+    loadGisScript().catch(() => {});
   }
 
   window.ThoughtDeskSync = {

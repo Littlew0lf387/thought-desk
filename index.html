@@ -106,6 +106,7 @@
         <button type="button" id="btn-more-menu" class="mini-pill mini-btn-pill" aria-label="More options" title="More options">⋯</button>
         <div id="data-menu" class="popover menu-list hidden">
           <button type="button" id="btn-theme-toggle" class="menu-item">Switch to Soft Daylight</button>
+          <button type="button" id="btn-zen-mode" class="menu-item">Toggle Wallpaper Zen Mode</button>
           <button type="button" id="btn-menu-sync" class="menu-item">Sync &amp; Backups (Google Drive)</button>
           <button type="button" id="btn-tidy" class="menu-item">Neatly Arrange Corkboard</button>
           <button type="button" id="btn-export-md" class="menu-item">Export Markdown (.md)</button>
@@ -465,6 +466,7 @@
       <form id="sync-config-form" class="rule-form">
         <input id="sync-client-id" type="text" placeholder="Google OAuth Client ID (for browser sync)…" autocomplete="off" />
         <div class="plugin-quick-actions">
+          <button type="button" id="btn-paste-client-id" class="btn btn-small">Paste ID</button>
           <button type="submit" class="btn btn-small">Save Client ID</button>
           <button type="button" id="btn-drive-signin" class="btn btn-primary btn-small">Sign in with Google</button>
           <button type="button" id="btn-drive-sync-now" class="btn btn-small">Backup Snapshot Now</button>
@@ -488,11 +490,34 @@
       </div>
     </aside>
 
+    <!-- Mobile Dashboard Overlay (shown on phones <= 768px, leaves desktop untouched) -->
+    <section id="mobile-dashboard" class="mobile-dashboard" aria-label="Mobile Study Dashboard">
+      <div class="mob-desk-strip">
+        <button type="button" class="mob-chip" data-mob-action="theme">Lamp Theme</button>
+        <button type="button" class="mob-chip" data-mob-action="focus">25m Focus</button>
+        <button type="button" class="mob-chip" data-mob-action="mail">Mail</button>
+        <button type="button" class="mob-chip" data-mob-action="reminders">Reminders</button>
+        <button type="button" class="mob-chip" data-mob-action="bin">Bin</button>
+        <button type="button" class="mob-chip" data-mob-action="outline">Archive</button>
+      </div>
+      <div id="mob-spaces-row" class="mob-spaces-row" aria-label="Study Spaces"></div>
+      <div id="mob-view-board" class="mob-view">
+        <div id="mob-notes-feed" class="mob-notes-feed"></div>
+      </div>
+      <div id="mob-view-binders" class="mob-view hidden">
+        <div class="mob-section-head">
+          <span>Your Binders</span>
+          <button type="button" id="mob-btn-new-binder" class="btn btn-small btn-primary">+ Binder</button>
+        </div>
+        <div id="mob-binders-grid" class="mob-binders-grid"></div>
+      </div>
+    </section>
+
     <!-- Mobile Bottom Navigation (shown automatically on phones <= 768px) -->
     <nav id="mobile-nav" class="mobile-nav" aria-label="Mobile Navigation">
-      <button type="button" class="mob-btn" data-mob="journal">Journal</button>
+      <button type="button" class="mob-btn active" data-mob="board">Board</button>
       <button type="button" class="mob-btn" data-mob="binders">Binders</button>
-      <button type="button" class="mob-btn" data-mob="bin">Bin</button>
+      <button type="button" class="mob-btn" data-mob="journal">Journal</button>
       <button type="button" class="mob-btn" data-mob="games">Games</button>
       <button type="button" class="mob-btn" data-mob="sync">Sync</button>
     </nav>
